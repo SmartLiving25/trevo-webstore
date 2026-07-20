@@ -1,34 +1,95 @@
-import { asc } from "drizzle-orm";
 import { z } from "zod";
-import { getDb } from "../../../db";
-import { productsTable } from "../../../db/schema";
-import { getRuntimeEnv } from "../../../lib/runtime-env";
+import { getAdminFirestore } from "@/lib/firebase/admin";
+import { getAdminSessionUser } from "@/lib/firebase/admin-session";
+
+export const runtime = "nodejs";
 
 const productSchema = z.object({
-  id: z.string().min(1), sku: z.string().min(3), name: z.string().min(2), category: z.string().min(2), collection: z.string().default("Everyday"),
-  description: z.string().default(""), material: z.string().default(""), price: z.number().int().min(0), compareAt: z.number().int().min(0).nullable().optional(),
-  stock: z.number().int().min(0), colors: z.array(z.string()).min(1), sizes: z.array(z.string()).min(1), images: z.array(z.string()).min(1), active: z.boolean().default(true),
+  sku: z.string().trim().min(3),
+  name: z.string().trim().min(2),
+  category: z.string().trim().min(2),
+  collection: z.string().trim().default("Everyday"),
+  description: z.string().trim().min(10),
+  material: z.string().trim().default(""),
+  price: z.number().int().min(0),
+  compareAt: z.number().int().min(0).nullable().optional(),
+  stock: z.number().int().min(0),
+  colors: z.array(z.string().trim()).min(1),
+  sizes: z.array(z.string().trim()).min(1),
+  images: z.array(z.string().url()).min(4).max(6),
+  active: z.boolean().default(true),
 });
-
-function adminAllowed(request: Request) {
-  const runtime = getRuntimeEnv();
-  return runtime.ADMIN_API_KEY ? request.headers.get("x-admin-key") === runtime.ADMIN_API_KEY : Boolean(request.headers.get("oai-authenticated-user-email"));
-}
 
 export async function GET() {
   try {
-    const rows = await getDb().select().from(productsTable).orderBy(asc(productsTable.name));
-    return Response.json({ products: rows.map((row) => ({ ...row, colors: JSON.parse(row.colorsJson), sizes: JSON.parse(row.sizesJson), images: JSON.parse(row.imagesJson) })) });
+    const snapshot = await getAdminFirestore()
+      .collection("products")
+      .where("active", "==", true)
+      .get();
+
+    const products = snapshot.docs
+      .map((document) => ({
+        id: document.id,
+        ...document.data(),
+      }))
+      .sort((a, b) =>
+        String(a.name).localeCompare(String(b.name)),
+      );
+
+    return Response.json({ products });
   } catch {
-    return Response.json({ products: [], setupRequired: true });
+    return Response.json(
+      { error: "Products could not be loaded." },
+      { status: 500 },
+    );
   }
 }
 
 export async function POST(request: Request) {
-  if (!adminAllowed(request)) return Response.json({ error: "Admin authentication required" }, { status: 401 });
-  const parsed = productSchema.safeParse(await request.json());
-  if (!parsed.success) return Response.json({ error: "Invalid product data", fields: parsed.error.flatten().fieldErrors }, { status: 400 });
-  const product = parsed.data;
-  await getDb().insert(productsTable).values({ ...product, compareAt: product.compareAt ?? null, colorsJson: JSON.stringify(product.colors), sizesJson: JSON.stringify(product.sizes), imagesJson: JSON.stringify(product.images) });
-  return Response.json({ product }, { status: 201 });
+  const adminUser = await getAdminSessionUser();
+
+  if (!adminUser) {
+    return Response.json(
+      { error: "Admin authentication required." },
+      { status: 401 },
+    );
+  }
+
+  try {
+    const parsed = productSchema.safeParse(await request.json());
+
+    if (!parsed.success) {
+      return Response.json(
+        {
+          error: "Check all product details and provide 4 to 6 image URLs.",
+          fields: parsed.error.flatten().fieldErrors,
+        },
+        { status: 400 },
+      );
+    }
+
+    const id = `${parsed.data.sku
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "")}-${Date.now().toString(36)}`;
+
+    const product = {
+      id,
+      ...parsed.data,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    await getAdminFirestore()
+      .collection("products")
+      .doc(id)
+      .set(product);
+
+    return Response.json({ product }, { status: 201 });
+  } catch {
+    return Response.json(
+      { error: "The product could not be saved." },
+      { status: 500 },
+    );
+  }
 }
