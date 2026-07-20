@@ -1,0 +1,4 @@
+sku,name,category,collection,description,material,price,compare_at,stock,colors,sizes,images,badge,active
+TRV-SHB-001,Mira Sculpted Shoulder Bag,Shoulder Bags,Signature,"A softly structured shoulder bag with a clean curved profile.",Premium vegan leather,3890,4490,8,Sage|Black|Ivory,Medium,https://example.com/mira-1.jpg|https://example.com/mira-2.jpg,Bestseller,true
+TRV-TOT-002,Elara Everyday Tote,Tote Bags,Everyday,"A spacious polished tote designed for workdays and university.",Textured vegan leather,3290,,14,Dusty Rose|Taupe|Black,Large,https://example.com/elara-1.jpg,New,true
+TRV-CRB-003,Noor Trapeze Crossbody,Crossbody,Imported,"A compact trapeze silhouette with a detachable strap.",Imported PU leather,4590,5190,5,Tan|Black|Berry,Small,https://example.com/noor-1.jpg,Limited,true
