@@ -30,7 +30,7 @@ export async function GET() {
     const products = snapshot.docs
       .map((document) => ({
         id: document.id,
-        ...document.data(),
+       ...(document.data() as { name?: string; [key: string]: unknown }),
       }))
       .sort((a, b) =>
         String(a.name).localeCompare(String(b.name)),
