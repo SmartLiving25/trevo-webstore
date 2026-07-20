@@ -295,7 +295,7 @@ export default function Home() {
         <div className="footer-brand"><a className="brand light" href="#top">TREVO<span>Effortless style</span></a><p>Modern handbags for everyday confidence.<br />Designed for Pakistan, selected with care.</p></div>
         <div><h3>Shop</h3><a href="#shop">New arrivals</a><a href="#shop">Luxury collection</a><a href="#shop">Totes</a><a href="#shop">Crossbody</a><a href="#shop">Box bags</a></div>
         <div><h3>Help</h3><button onClick={() => setAccountOpen(true)}>My account</button><button onClick={() => setCartOpen(true)}>Delivery & checkout</button><a href={`https://wa.me/${WhatsAppNumber}`} target="_blank" rel="noreferrer">WhatsApp support</a><a href="mailto:hello@trevopk.com">hello@trevopk.com</a></div>
-        <div><h3>For Trevo</h3><a href="/admin">Admin dashboard</a><a href="/setup">Setup guide</a><a href="https://www.instagram.com/trevo_pk/" target="_blank" rel="noreferrer">Instagram · @trevo_pk</a><a href="https://web.facebook.com/profile.php?id=61578912687234" target="_blank" rel="noreferrer">Facebook</a></div>
+        <div><h3>Follow Trevo</h3><a href="https://www.instagram.com/trevo_pk/" target="_blank" rel="noreferrer">Instagram · @trevo_pk</a><a href="https://web.facebook.com/profile.php?id=61578912687234" target="_blank" rel="noreferrer">Facebook</a></div>
         <div className="footer-bottom"><span>© 2026 Trevo. All rights reserved.</span><span>Privacy · Terms · Returns</span></div>
       </footer>
 
