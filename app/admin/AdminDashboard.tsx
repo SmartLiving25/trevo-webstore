@@ -30,7 +30,7 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { formatPKR, products } from "../../lib/catalog";
+import { formatPKR, products as catalogProducts, type Product } from "../../lib/catalog";
 
 type Tab = "Overview" | "Products" | "Orders" | "Customers" | "Payments";
 type AdminOrder = {
@@ -43,6 +43,30 @@ type AdminOrder = {
   status: "New" | "Confirmed" | "Packed" | "Shipped" | "Delivered";
   payment: "Paid" | "Advance pending" | "COD advance due";
   date: string;
+};
+
+type ProductDraft = {
+  name: string;
+  sku: string;
+  price: string;
+  category: Product["category"];
+  stock: string;
+  description: string;
+  material: string;
+  colors: string;
+  images: string[];
+};
+
+const emptyProductDraft: ProductDraft = {
+  name: "",
+  sku: "",
+  price: "",
+  category: "Crossbody",
+  stock: "",
+  description: "",
+  material: "",
+  colors: "As shown",
+  images: ["", "", "", "", "", ""],
 };
 
 const initialOrders: AdminOrder[] = [
@@ -61,7 +85,7 @@ const menu: { tab: Tab; icon: React.ReactNode }[] = [
   { tab: "Payments", icon: <CircleDollarSign /> },
 ];
 
-export default function AdminPage() {
+export default function AdminDashboard() {
   const [tab, setTab] = useState<Tab>("Overview");
   const [orders, setOrders] = useState(initialOrders);
   const [query, setQuery] = useState("");
@@ -69,6 +93,9 @@ export default function AdminPage() {
   const [importOpen, setImportOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [toast, setToast] = useState("");
+  const [storeProducts, setStoreProducts] = useState<Product[]>(catalogProducts);
+  const [productDraft, setProductDraft] = useState<ProductDraft>(emptyProductDraft);
+  const [savingProduct, setSavingProduct] = useState(false);
 
   useEffect(() => {
     fetch("/api/orders")
@@ -90,8 +117,21 @@ export default function AdminPage() {
       .catch(() => undefined);
   }, []);
 
+  useEffect(() => {
+    fetch("/api/products")
+      .then((response) => response.ok ? response.json() : Promise.reject())
+      .then((data: { products?: Product[] }) => {
+        if (!data.products?.length) return;
+        setStoreProducts((current) => {
+          const firebaseIds = new Set(data.products?.map((product) => product.id));
+          return [...data.products!, ...current.filter((product) => !firebaseIds.has(product.id))];
+        });
+      })
+      .catch(() => undefined);
+  }, []);
+
   const matchingOrders = useMemo(() => orders.filter((order) => `${order.id} ${order.customer} ${order.city}`.toLowerCase().includes(query.toLowerCase())), [orders, query]);
-  const lowStock = products.filter((product) => product.stock <= 5);
+  const lowStock = storeProducts.filter((product) => product.stock <= 5);
 
   const changeStatus = (id: string, status: AdminOrder["status"]) => {
     setOrders((current) => current.map((order) => order.id === id ? { ...order, status } : order));
@@ -112,6 +152,63 @@ export default function AdminPage() {
     setTab(value);
     setSideOpen(false);
     setQuery("");
+  };
+
+  const updateProductImage = (index: number, value: string) => {
+    setProductDraft((current) => ({
+      ...current,
+      images: current.images.map((image, imageIndex) => imageIndex === index ? value : image),
+    }));
+  };
+
+  const saveProduct = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const images = productDraft.images.map((image) => image.trim()).filter(Boolean);
+
+    if (images.length < 4 || images.length > 6) {
+      showToast("Please provide 4 to 6 image URLs.");
+      return;
+    }
+
+    setSavingProduct(true);
+
+    try {
+      const response = await fetch("/api/products", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: productDraft.name,
+          sku: productDraft.sku,
+          price: Number(productDraft.price),
+          category: productDraft.category,
+          collection: productDraft.category === "Luxury Collection" ? "Luxury" : productDraft.category === "Box Bags" ? "Statement" : "Everyday",
+          stock: Number(productDraft.stock),
+          description: productDraft.description,
+          material: productDraft.material || "Material details available on WhatsApp",
+          colors: productDraft.colors.split(",").map((color) => color.trim()).filter(Boolean),
+          sizes: ["One size"],
+          images,
+          active: true,
+        }),
+      });
+
+      if (response.status === 401) {
+        window.location.href = "/admin/login";
+        return;
+      }
+
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Product could not be saved.");
+
+      setStoreProducts((current) => [data.product as Product, ...current]);
+      setProductDraft(emptyProductDraft);
+      setAddOpen(false);
+      showToast("Product saved with image gallery.");
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Product could not be saved.");
+    } finally {
+      setSavingProduct(false);
+    }
   };
 
   return (
@@ -142,7 +239,7 @@ export default function AdminPage() {
           <section className="admin-card recent-orders"><div className="card-title"><div><h2>Recent orders</h2><p>Latest orders from web and WhatsApp checkout</p></div><button onClick={() => selectTab("Orders")}>View all orders <ArrowLeft /></button></div><OrdersTable orders={orders.slice(0, 4)} onStatus={changeStatus} onPaid={markPaid} /></section>
         </div>}
 
-        {tab === "Products" && <div className="admin-content"><section className="page-title"><div><h1>Products</h1><p>{products.length} products · {products.reduce((sum, product) => sum + product.stock, 0)} units in stock</p></div><div><button className="outline-admin-button" onClick={() => setImportOpen(true)}><FileUp /> Import CSV</button><button className="solid-admin-button" onClick={() => setAddOpen(true)}><Plus /> Add product</button></div></section><section className="admin-card product-table-card"><table className="admin-table"><thead><tr><th>Product</th><th>Collection</th><th>Price</th><th>Inventory</th><th>Status</th><th /></tr></thead><tbody>{products.filter((product) => `${product.name} ${product.sku}`.toLowerCase().includes(query.toLowerCase())).map((product) => <tr key={product.id}><td><div className="table-product"><img src={product.images[0]} alt="" /><span><b>{product.name}</b><small>{product.sku}</small></span></div></td><td>{product.collection}</td><td>{formatPKR(product.price)}</td><td><b>{product.stock}</b> units</td><td><span className={`table-status ${product.stock <= 3 ? "danger" : product.stock <= 5 ? "pending" : "success"}`}>{product.stock <= 3 ? "Low stock" : "Active"}</span></td><td><button className="table-icon"><Edit3 /></button><button className="table-icon danger-icon"><Trash2 /></button></td></tr>)}</tbody></table></section></div>}
+        {tab === "Products" && <div className="admin-content"><section className="page-title"><div><h1>Products</h1><p>{storeProducts.length} products · {storeProducts.reduce((sum, product) => sum + product.stock, 0)} units in stock</p></div><div><button className="outline-admin-button" onClick={() => setImportOpen(true)}><FileUp /> Import CSV</button><button className="solid-admin-button" onClick={() => setAddOpen(true)}><Plus /> Add product</button></div></section><section className="admin-card product-table-card"><table className="admin-table"><thead><tr><th>Product</th><th>Collection</th><th>Price</th><th>Inventory</th><th>Status</th><th /></tr></thead><tbody>{storeProducts.filter((product) => `${product.name} ${product.sku}`.toLowerCase().includes(query.toLowerCase())).map((product) => <tr key={product.id}><td><div className="table-product"><img src={product.images[0]} alt="" /><span><b>{product.name}</b><small>{product.sku}</small></span></div></td><td>{product.collection}</td><td>{formatPKR(product.price)}</td><td><b>{product.stock}</b> units</td><td><span className={`table-status ${product.stock <= 3 ? "danger" : product.stock <= 5 ? "pending" : "success"}`}>{product.stock <= 3 ? "Low stock" : "Active"}</span></td><td><button className="table-icon"><Edit3 /></button><button className="table-icon danger-icon"><Trash2 /></button></td></tr>)}</tbody></table></section></div>}
 
         {tab === "Orders" && <div className="admin-content"><section className="page-title"><div><h1>Orders</h1><p>Track, confirm and fulfil every Trevo order.</p></div><button className="outline-admin-button"><Download /> Export orders</button></section><section className="order-tabs"><button className="active">All <b>{orders.length}</b></button><button>New <b>{orders.filter((order) => order.status === "New").length}</b></button><button>In progress</button><button>Shipped</button><button>Delivered</button></section><section className="admin-card recent-orders"><OrdersTable orders={matchingOrders} onStatus={changeStatus} onPaid={markPaid} /></section></div>}
 
@@ -152,7 +249,7 @@ export default function AdminPage() {
       </section>
 
       {importOpen && <AdminModal title="Import product CSV" onClose={() => setImportOpen(false)}><div className="upload-zone"><FileUp /><h3>Choose your product CSV</h3><p>Use the included template. Images can be public links or uploaded separately.</p><label><input type="file" accept=".csv" onChange={() => showToast("CSV selected. Connect Firebase to import live products.")} />Select CSV file</label></div><div className="import-checks"><p><CheckCircle2 /> SKU and product names are required</p><p><CheckCircle2 /> Multiple colours use a vertical bar: Sage|Black</p><p><CheckCircle2 /> Prices should be numbers without Rs.</p></div><button className="solid-admin-button full" onClick={() => { setImportOpen(false); showToast("CSV validation complete — 6 sample rows ready."); }}>Validate and import</button></AdminModal>}
-      {addOpen && <AdminModal title="Add a new product" onClose={() => setAddOpen(false)}><form className="admin-form" onSubmit={(event) => { event.preventDefault(); setAddOpen(false); showToast("Product draft saved."); }}><label>Product name<input required placeholder="e.g. Luna Shoulder Bag" /></label><div><label>SKU<input required placeholder="TRV-SHB-007" /></label><label>Price (PKR)<input required type="number" placeholder="3990" /></label></div><div><label>Category<select><option>Shoulder Bags</option><option>Tote Bags</option><option>Crossbody</option><option>Top Handle</option></select></label><label>Opening stock<input required type="number" placeholder="10" /></label></div><label>Description<textarea required placeholder="Describe the bag, material and useful details." /></label><button className="solid-admin-button full">Save product</button></form></AdminModal>}
+      {addOpen && <AdminModal title="Add a new product" onClose={() => setAddOpen(false)}><form className="admin-form" onSubmit={saveProduct}><label>Product name<input required placeholder="e.g. Luna Shoulder Bag" value={productDraft.name} onChange={(event) => setProductDraft((current) => ({ ...current, name: event.target.value }))} /></label><div><label>SKU<input required placeholder="TRV-SHB-007" value={productDraft.sku} onChange={(event) => setProductDraft((current) => ({ ...current, sku: event.target.value }))} /></label><label>Price (PKR)<input required min="0" type="number" placeholder="3990" value={productDraft.price} onChange={(event) => setProductDraft((current) => ({ ...current, price: event.target.value }))} /></label></div><div><label>Category<select value={productDraft.category} onChange={(event) => setProductDraft((current) => ({ ...current, category: event.target.value as Product["category"] }))}><option>Crossbody</option><option>Tote Bags</option><option>Box Bags</option><option>Luxury Collection</option></select></label><label>Opening stock<input required min="0" type="number" placeholder="10" value={productDraft.stock} onChange={(event) => setProductDraft((current) => ({ ...current, stock: event.target.value }))} /></label></div><label>Colours (separate multiple colours with commas)<input required placeholder="Black, Tan, Ivory" value={productDraft.colors} onChange={(event) => setProductDraft((current) => ({ ...current, colors: event.target.value }))} /></label><label>Material<input placeholder="e.g. Premium vegan leather" value={productDraft.material} onChange={(event) => setProductDraft((current) => ({ ...current, material: event.target.value }))} /></label><label>Description<textarea required minLength={10} placeholder="Describe the bag, material and useful details." value={productDraft.description} onChange={(event) => setProductDraft((current) => ({ ...current, description: event.target.value }))} /></label><p style={{ margin: "8px 0 0", color: "#22211d", fontSize: "10px", fontWeight: 700 }}>Product images</p><p style={{ margin: "-8px 0 0", color: "#77756d", fontSize: "9px" }}>Paste 4 required image URLs. Images 5 and 6 are optional.</p>{productDraft.images.map((image, index) => <label key={index}>Image URL {index + 1}{index >= 4 ? " (optional)" : ""}<input required={index < 4} type="url" placeholder="https://raw.githubusercontent.com/.../image.jpg" value={image} onChange={(event) => updateProductImage(index, event.target.value)} /></label>)}<button className="solid-admin-button full" disabled={savingProduct}>{savingProduct ? "Saving product…" : "Save product"}</button></form></AdminModal>}
       {toast && <div className="admin-toast"><CheckCircle2 /> {toast}</div>}
     </main>
   );
