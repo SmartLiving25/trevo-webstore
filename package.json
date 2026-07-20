@@ -48,6 +48,11 @@
     "vite": "8.0.13",
     "wrangler": "4.92.0"
   },
+    "overrides": {
+    "jwks-rsa": {
+      "jose": "4.15.9"
+    }
+  },
   "type": "module",
   "displayName": "Trevo Fashion Store"
 }
