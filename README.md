@@ -201,3 +201,4 @@ npm test
 ```
 
 GitHub stores the source but GitHub Pages cannot run this store's secure APIs. For a GitHub-based deployment, connect the repository to Vercel, choose Next.js, and use `npm run build:vercel`. Deploy Firebase Functions/Firestore/Storage first, add the `.env.example` values in Vercel, then connect `trevopk.com` and `www.trevopk.com`. Keep the old Netlify DNS records until the new Vercel address passes an end-to-end order test.
+
