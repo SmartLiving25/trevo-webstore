@@ -187,6 +187,7 @@ export default function Home() {
 
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
+    const selectedCategory = category.trim().toLowerCase();
     const matchingProducts = storeProducts.filter((product) => {
       const matchesQuery =
         !query ||
@@ -194,7 +195,8 @@ export default function Home() {
           .toLowerCase()
           .includes(query);
       const matchesCategory =
-        category === "All bags" || product.category === category;
+        selectedCategory === "all bags" ||
+        String(product.category).trim().toLowerCase() === selectedCategory;
       const matchesCollection =
         collection === "All collections" || product.collection === collection;
       return (
@@ -206,6 +208,20 @@ export default function Home() {
     });
     return newArrivalsOnly ? matchingProducts.slice(0, 6) : matchingProducts;
   }, [storeProducts, search, category, collection, maxPrice, newArrivalsOnly]);
+
+  const availableCategories = useMemo(
+    () => [
+      "All bags",
+      ...Array.from(
+        new Set(
+          storeProducts
+            .map((product) => String(product.category).trim())
+            .filter(Boolean),
+        ),
+      ).sort((a, b) => a.localeCompare(b)),
+    ],
+    [storeProducts],
+  );
 
   const selectedVariants = selectedProduct ? productVariants(selectedProduct) : [];
   const gallerySlides = selectedVariants.flatMap((variant) => variant.images.map((image) => ({ image, variantId: variant.id, color: variant.color })));
@@ -395,6 +411,15 @@ export default function Home() {
     setCategory(nextCategory);
   };
 
+  const showAllProducts = () => {
+    setCategory("All bags");
+    setCollection("All collections");
+    setMaxPrice(5500);
+    setSearch("");
+    setNewArrivalsOnly(false);
+    window.requestAnimationFrame(scrollToShop);
+  };
+
   return (
     <main>
       <div className="announcement">
@@ -504,12 +529,14 @@ export default function Home() {
             Thoughtful silhouettes for work, weekends and every version of you.
           </p>
           <div className="hero-actions">
-            <button className="primary-button" onClick={scrollToShop}>
+            <button className="primary-button" onClick={showAllProducts}>
               Shop the collection <ArrowRight size={17} />
             </button>
             <button
               className="text-button"
               onClick={() => {
+                setNewArrivalsOnly(false);
+                setCategory("All bags");
                 setCollection("Luxury");
                 scrollToShop();
               }}
@@ -571,7 +598,13 @@ export default function Home() {
             <p className="eyebrow">
               {newArrivalsOnly ? "Freshly added" : "Curated for you"}
             </p>
-            <h2>{newArrivalsOnly ? "New arrivals" : "Shop all bags"}</h2>
+            <h2>
+              {newArrivalsOnly
+                ? "New arrivals"
+                : category === "All bags"
+                  ? "Shop all bags"
+                  : category}
+            </h2>
           </div>
           <p>{filtered.length} styles</p>
         </div>
@@ -598,13 +631,7 @@ export default function Home() {
             )}
           </div>
           <div className="quick-categories">
-            {[
-              "All bags",
-              "Luxury Collection",
-              "Tote Bags",
-              "Crossbody",
-              "Box Bags",
-            ].map((item) => (
+            {availableCategories.map((item) => (
               <button
                 key={item}
                 className={!newArrivalsOnly && category === item ? "active" : ""}
@@ -665,10 +692,7 @@ export default function Home() {
             </label>
             <button
               onClick={() => {
-                chooseCategory("All bags");
-                setCollection("All collections");
-                setMaxPrice(5500);
-                setSearch("");
+                showAllProducts();
               }}
             >
               Reset filters
@@ -759,10 +783,7 @@ export default function Home() {
             <button
               className="secondary-button"
               onClick={() => {
-                chooseCategory("All bags");
-                setCollection("All collections");
-                setMaxPrice(5500);
-                setSearch("");
+                showAllProducts();
               }}
             >
               Show all bags
@@ -830,10 +851,10 @@ export default function Home() {
         <div>
           <h3>Shop</h3>
           <button onClick={showNewArrivals}>New arrivals</button>
-          <a href="#shop">Luxury collection</a>
-          <a href="#shop">Totes</a>
-          <a href="#shop">Crossbody</a>
-          <a href="#shop">Box bags</a>
+          <button onClick={() => { chooseCategory("Luxury Collection"); scrollToShop(); }}>Luxury collection</button>
+          <button onClick={() => { chooseCategory("Tote Bags"); scrollToShop(); }}>Totes</button>
+          <button onClick={() => { chooseCategory("Crossbody"); scrollToShop(); }}>Crossbody</button>
+          <button onClick={() => { chooseCategory("Box Bags"); scrollToShop(); }}>Box bags</button>
         </div>
         <div>
           <h3>Help</h3>
