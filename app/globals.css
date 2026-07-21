@@ -692,31 +692,14 @@ footer a:hover, footer button:hover { color: white; }
   .setup-steps li > div { width: 27px; height: 27px; }
   .launch-card { padding: 25px 20px; }
 }
-.logo-brand {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.logo-brand > img {
-  display: block;
-  width: auto;
-  height: 44px;
-  max-width: 150px;
-  object-fit: contain;
-}
-
-.logo-brand .brand-fallback {
-  display: flex;
-  flex-direction: column;
-}
-
-.logo-brand .brand-fallback small {
-  display: block;
-  font: inherit;
-  font-size: 7px;
-  letter-spacing: 2px;
-  margin-top: 3px;
+.trevo-wordmark {
+  display: inline-block;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(32px, 2.5vw, 42px);
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: .08em;
+  text-transform: none;
 }
 
 .checkout-error {
@@ -756,6 +739,6 @@ footer a:hover, footer button:hover { color: white; }
 }
 
 @media (max-width: 640px) {
-  .logo-brand > img { height: 36px; max-width: 120px; }
+  .trevo-wordmark { font-size: 30px; }
   .variant-image-grid { grid-template-columns: 1fr; }
 }

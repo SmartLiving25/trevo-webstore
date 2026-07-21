@@ -93,9 +93,9 @@ export async function POST(request: Request) {
     const images = variants
       .flatMap((variant) => variant.images)
       .filter((image, index, all) => all.indexOf(image) === index);
-    if (images.length < 4) {
+    if (!images.length) {
       return Response.json(
-        { error: "Add at least 4 product images across the variants." },
+        { error: "Add at least one product image." },
         { status: 400 },
       );
     }
@@ -152,9 +152,9 @@ export async function PUT(request: Request) {
     const images = variants
       .flatMap((variant) => variant.images)
       .filter((image, index, all) => all.indexOf(image) === index);
-    if (images.length < 4)
+    if (!images.length)
       return Response.json(
-        { error: "Add at least 4 product images across the variants." },
+        { error: "Add at least one product image." },
         { status: 400 },
       );
     const product = {

@@ -76,7 +76,6 @@ export default function Home() {
   const [checkoutError, setCheckoutError] = useState("");
   const [storeProducts, setStoreProducts] =
     useState<Product[]>(catalogProducts);
-  const [logoLoaded, setLogoLoaded] = useState(false);
 
   useEffect(() => {
     try {
@@ -333,12 +332,7 @@ export default function Home() {
         >
           <Menu size={21} />
         </button>
-        <a className="brand logo-brand" href="#top" aria-label="Trevo home">
-          <img src="/images/logo.png" alt="Trevo" onLoad={() => setLogoLoaded(true)} onError={(event) => { event.currentTarget.style.display = "none"; }} />
-          {!logoLoaded && <span className="brand-fallback">
-            TREVO<small>Effortless style</small>
-          </span>}
-        </a>
+        <a className="brand trevo-wordmark" href="#top" aria-label="Trevo home">Trevo</a>
         <nav className="desktop-nav" aria-label="Main navigation">
           <a href="#new">New arrivals</a>
           <button
@@ -735,12 +729,7 @@ export default function Home() {
 
       <footer>
         <div className="footer-brand">
-          <a className="brand light logo-brand" href="#top">
-            <img src="/images/logo.png" alt="Trevo" onLoad={() => setLogoLoaded(true)} onError={(event) => { event.currentTarget.style.display = "none"; }} />
-            {!logoLoaded && <span className="brand-fallback">
-              TREVO<small>Effortless style</small>
-            </span>}
-          </a>
+          <a className="brand light trevo-wordmark" href="#top">Trevo</a>
           <p>
             Modern handbags for everyday confidence.
             <br />
@@ -796,10 +785,7 @@ export default function Home() {
           <div className="backdrop" onClick={closeOverlays} />
           <aside className="mobile-menu" aria-label="Mobile menu">
             <div>
-              <a className="brand logo-brand" href="#top">
-                <img src="/images/logo.png" alt="Trevo" onLoad={() => setLogoLoaded(true)} onError={(event) => { event.currentTarget.style.display = "none"; }} />
-                {!logoLoaded && <span className="brand-fallback">TREVO<small>Effortless style</small></span>}
-              </a>
+              <a className="brand trevo-wordmark" href="#top">Trevo</a>
               <button
                 className="icon-button"
                 aria-label="Close menu"
