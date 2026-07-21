@@ -6,7 +6,6 @@ import { getAdminSessionUser } from "@/lib/firebase/admin-session";
 export const runtime = "nodejs";
 
 const orderSchema = z.object({
-  orderNumber: z.string().min(8).max(40),
   customer: z.object({
     name: z.string().min(2).max(100),
     email: z.string().email().max(160),
@@ -17,14 +16,19 @@ const orderSchema = z.object({
     delivery: z.enum(["standard", "urgent"]),
     payment: z.enum(["cod", "advance"]),
   }),
-  items: z.array(z.object({
-    productId: z.string().min(1),
-    sku: z.string().min(1),
-    name: z.string().min(1),
-    color: z.string().min(1),
-    quantity: z.number().int().min(1).max(20),
-    unitPrice: z.number().int().min(0),
-  })).min(1).max(30),
+  items: z
+    .array(
+      z.object({
+        productId: z.string().min(1),
+        sku: z.string().min(1),
+        name: z.string().min(1),
+        color: z.string().min(1),
+        quantity: z.number().int().min(1).max(20),
+        unitPrice: z.number().int().min(0),
+      }),
+    )
+    .min(1)
+    .max(30),
   subtotal: z.number().int().min(0),
   shipping: z.number().int().min(0),
   total: z.number().int().min(0),
@@ -79,11 +83,12 @@ export async function POST(request: Request) {
       (sum, item) => sum + item.unitPrice * item.quantity,
       0,
     );
-    const allowedShipping = order.customer.delivery === "urgent"
-      ? 500
-      : calculatedSubtotal >= 1500
-        ? 0
-        : 250;
+    const allowedShipping =
+      order.customer.delivery === "urgent"
+        ? 500
+        : calculatedSubtotal >= 1500
+          ? 0
+          : 250;
 
     if (
       calculatedSubtotal !== order.subtotal ||
@@ -99,6 +104,7 @@ export async function POST(request: Request) {
     const database = getAdminFirestore();
     const id = randomUUID();
     const now = new Date().toISOString();
+    const dateKey = now.slice(0, 10).replaceAll("-", "");
     const customerEmail = order.customer.email.toLowerCase();
     const customerId = createHash("sha256")
       .update(customerEmail)
@@ -106,34 +112,48 @@ export async function POST(request: Request) {
       .slice(0, 32);
     const orderReference = database.collection("orders").doc(id);
     const customerReference = database.collection("customers").doc(customerId);
-    const savedOrder = {
-      id,
-      orderNumber: order.orderNumber,
-      customerName: order.customer.name,
-      customerEmail,
-      customerPhone: order.customer.phone,
-      city: order.customer.city,
-      address: order.customer.address,
-      notes: order.customer.notes,
-      items: order.items,
-      subtotal: order.subtotal,
-      shipping: order.shipping,
-      total: order.total,
-      deliveryMethod: order.customer.delivery,
-      paymentMethod: order.customer.payment,
-      paymentStatus: order.paymentStatus,
-      advanceAmount: order.customer.payment === "cod" ? 200 : order.total,
-      status: "new",
-      trackingCode: "",
-      createdAt: now,
-      updatedAt: now,
-    };
+    const counterReference = database
+      .collection("counters")
+      .doc(`orders-${dateKey}`);
+    let orderNumber = "";
 
     await database.runTransaction(async (transaction) => {
-      const existingCustomer = await transaction.get(customerReference);
+      const [existingCustomer, counterSnapshot] = await Promise.all([
+        transaction.get(customerReference),
+        transaction.get(counterReference),
+      ]);
+      const sequence = Number(counterSnapshot.data()?.value || 0) + 1;
+      orderNumber = `TRV-${dateKey.slice(2)}-${String(sequence).padStart(4, "0")}`;
       const previous = existingCustomer.data();
+      const savedOrder = {
+        id,
+        orderNumber,
+        customerName: order.customer.name,
+        customerEmail,
+        customerPhone: order.customer.phone,
+        city: order.customer.city,
+        address: order.customer.address,
+        notes: order.customer.notes,
+        items: order.items,
+        subtotal: order.subtotal,
+        shipping: order.shipping,
+        total: order.total,
+        deliveryMethod: order.customer.delivery,
+        paymentMethod: order.customer.payment,
+        paymentStatus: order.paymentStatus,
+        advanceAmount: order.customer.payment === "cod" ? 200 : order.total,
+        status: "new",
+        trackingCode: "",
+        createdAt: now,
+        updatedAt: now,
+      };
 
       transaction.set(orderReference, savedOrder);
+      transaction.set(
+        counterReference,
+        { value: sequence, updatedAt: now },
+        { merge: true },
+      );
       transaction.set(customerReference, {
         id: customerId,
         email: customerEmail,
@@ -151,7 +171,7 @@ export async function POST(request: Request) {
       {
         order: {
           id,
-          orderNumber: order.orderNumber,
+          orderNumber,
           status: "new",
           paymentStatus: order.paymentStatus,
         },
@@ -159,10 +179,7 @@ export async function POST(request: Request) {
       { status: 201 },
     );
   } catch {
-    return Response.json(
-      { error: "Unable to create order." },
-      { status: 500 },
-    );
+    return Response.json({ error: "Unable to create order." }, { status: 500 });
   }
 }
 
@@ -177,20 +194,12 @@ export async function PATCH(request: Request) {
 
   const updateSchema = z.object({
     id: z.string().min(1),
-    status: z.enum([
-      "new",
-      "confirmed",
-      "packed",
-      "shipped",
-      "delivered",
-      "cancelled",
-    ]).optional(),
-    paymentStatus: z.enum([
-      "pending_advance",
-      "cod_advance_required",
-      "paid",
-      "refunded",
-    ]).optional(),
+    status: z
+      .enum(["new", "confirmed", "packed", "shipped", "delivered", "cancelled"])
+      .optional(),
+    paymentStatus: z
+      .enum(["pending_advance", "cod_advance_required", "paid", "refunded"])
+      .optional(),
     trackingCode: z.string().max(100).optional(),
   });
   const parsed = updateSchema.safeParse(await request.json());
