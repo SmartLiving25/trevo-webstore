@@ -27,6 +27,7 @@ import {
   productVariants,
   products as catalogProducts,
   type Product,
+  type ProductVariant,
 } from "../lib/catalog";
 
 type CartLine = { product: Product; quantity: number; color: string };
@@ -53,6 +54,10 @@ const initialCheckout: CheckoutFields = {
 };
 
 const WhatsAppNumber = "923007041451";
+
+function TrevoBrand({ light = false }: { light?: boolean }) {
+  return <a className={`brand brand-lockup ${light ? "light" : ""}`} href="#top" aria-label="Trevo home"><span className="brand-mark" aria-hidden="true"><img src="/images/logo.png" alt="" /></span><span className="brand-name">Trevo</span></a>;
+}
 
 export default function Home() {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -155,14 +160,14 @@ export default function Home() {
     });
   }, [storeProducts, search, category, collection, maxPrice]);
 
+  const selectedVariants = selectedProduct ? productVariants(selectedProduct) : [];
+  const gallerySlides = selectedVariants.flatMap((variant) => variant.images.map((image) => ({ image, variantId: variant.id, color: variant.color })));
+  const currentSlide = gallerySlides[activeImage] || gallerySlides[0];
   const selectedVariant = selectedProduct
-    ? productVariants(selectedProduct).find(
+    ? selectedVariants.find(
         (variant) => variant.color === selectedColor,
-      ) || productVariants(selectedProduct)[0]
+      ) || selectedVariants[0]
     : null;
-  const selectedImages = selectedVariant?.images.length
-    ? selectedVariant.images
-    : selectedProduct?.images || [];
   const selectedStock = selectedVariant?.stock ?? selectedProduct?.stock ?? 0;
 
   const subtotal = cart.reduce(
@@ -187,6 +192,19 @@ export default function Home() {
     setSelectedProduct(product);
     setActiveImage(0);
     setSelectedColor(productVariants(product)[0]?.color || "As shown");
+  };
+
+  const moveGallery = (direction: -1 | 1) => {
+    if (!gallerySlides.length) return;
+    const nextIndex = (activeImage + direction + gallerySlides.length) % gallerySlides.length;
+    setActiveImage(nextIndex);
+    setSelectedColor(gallerySlides[nextIndex].color);
+  };
+
+  const chooseVariant = (variant: ProductVariant) => {
+    const firstImageIndex = gallerySlides.findIndex((slide) => slide.variantId === variant.id);
+    setSelectedColor(variant.color);
+    setActiveImage(firstImageIndex >= 0 ? firstImageIndex : 0);
   };
 
   const addToCart = (
@@ -332,7 +350,7 @@ export default function Home() {
         >
           <Menu size={21} />
         </button>
-        <a className="brand trevo-wordmark" href="#top" aria-label="Trevo home">Trevo</a>
+        <TrevoBrand />
         <nav className="desktop-nav" aria-label="Main navigation">
           <a href="#new">New arrivals</a>
           <button
@@ -729,7 +747,7 @@ export default function Home() {
 
       <footer>
         <div className="footer-brand">
-          <a className="brand light trevo-wordmark" href="#top">Trevo</a>
+          <TrevoBrand light />
           <p>
             Modern handbags for everyday confidence.
             <br />
@@ -785,7 +803,7 @@ export default function Home() {
           <div className="backdrop" onClick={closeOverlays} />
           <aside className="mobile-menu" aria-label="Mobile menu">
             <div>
-              <a className="brand trevo-wordmark" href="#top">Trevo</a>
+              <TrevoBrand />
               <button
                 className="icon-button"
                 aria-label="Close menu"
@@ -1115,43 +1133,34 @@ export default function Home() {
             </button>
             <div className="gallery">
               <img
-                src={selectedImages[activeImage] || selectedProduct.images[0]}
+                src={currentSlide?.image || selectedProduct.images[0]}
                 alt={`${selectedProduct.name} view ${activeImage + 1}`}
               />
-              {selectedImages.length > 1 && (
+              {gallerySlides.length > 1 && (
                 <>
                   <button
                     className="gallery-prev"
                     aria-label="Previous photo"
-                    onClick={() =>
-                      setActiveImage(
-                        (activeImage - 1 + selectedImages.length) %
-                          selectedImages.length,
-                      )
-                    }
+                    onClick={() => moveGallery(-1)}
                   >
                     <ChevronLeft />
                   </button>
                   <button
                     className="gallery-next"
                     aria-label="Next photo"
-                    onClick={() =>
-                      setActiveImage(
-                        (activeImage + 1) % selectedImages.length,
-                      )
-                    }
+                    onClick={() => moveGallery(1)}
                   >
                     <ChevronRight />
                   </button>
                   <div className="thumbs">
-                    {selectedImages.map((image, index) => (
+                    {gallerySlides.map((slide, index) => (
                       <button
-                        key={image}
+                        key={`${slide.variantId}-${index}-${slide.image}`}
                         className={index === activeImage ? "active" : ""}
                         aria-label={`View image ${index + 1}`}
-                        onClick={() => setActiveImage(index)}
+                        onClick={() => { setActiveImage(index); setSelectedColor(slide.color); }}
                       >
-                        <img src={image} alt="" />
+                        <img src={slide.image} alt="" />
                       </button>
                     ))}
                   </div>
@@ -1198,7 +1207,7 @@ export default function Home() {
                       className={selectedColor === variant.color ? "active" : ""}
                       title={variant.color}
                       aria-label={variant.color}
-                      onClick={() => { setSelectedColor(variant.color); setActiveImage(0); }}
+                      onClick={() => chooseVariant(variant)}
                       style={{ background: variant.colorHex }}
                     />
                   ))}
