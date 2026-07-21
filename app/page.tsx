@@ -115,6 +115,7 @@ export default function Home() {
   const [category, setCategory] = useState("All bags");
   const [collection, setCollection] = useState("All collections");
   const [maxPrice, setMaxPrice] = useState(5000);
+  const [newArrivalsOnly, setNewArrivalsOnly] = useState(false);
   const [cart, setCart] = useState<CartLine[]>([]);
   const [wishlist, setWishlist] = useState<string[]>([]);
   const [checkout, setCheckout] = useState<CheckoutFields>(initialCheckout);
@@ -186,7 +187,7 @@ export default function Home() {
 
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
-    return storeProducts.filter((product) => {
+    const matchingProducts = storeProducts.filter((product) => {
       const matchesQuery =
         !query ||
         `${product.name} ${product.category} ${product.collection} ${product.colors.join(" ")}`
@@ -203,7 +204,8 @@ export default function Home() {
         product.price <= maxPrice
       );
     });
-  }, [storeProducts, search, category, collection, maxPrice]);
+    return newArrivalsOnly ? matchingProducts.slice(0, 6) : matchingProducts;
+  }, [storeProducts, search, category, collection, maxPrice, newArrivalsOnly]);
 
   const selectedVariants = selectedProduct ? productVariants(selectedProduct) : [];
   const gallerySlides = selectedVariants.flatMap((variant) => variant.images.map((image) => ({ image, variantId: variant.id, color: variant.color })));
@@ -379,6 +381,20 @@ export default function Home() {
   const scrollToShop = () =>
     document.getElementById("shop")?.scrollIntoView({ behavior: "smooth" });
 
+  const showNewArrivals = () => {
+    setCategory("All bags");
+    setCollection("All collections");
+    setMaxPrice(5500);
+    setSearch("");
+    setNewArrivalsOnly(true);
+    window.requestAnimationFrame(scrollToShop);
+  };
+
+  const chooseCategory = (nextCategory: string) => {
+    setNewArrivalsOnly(false);
+    setCategory(nextCategory);
+  };
+
   return (
     <main>
       <div className="announcement">
@@ -398,10 +414,10 @@ export default function Home() {
         </button>
         <TrevoBrand />
         <nav className="desktop-nav" aria-label="Main navigation">
-          <a href="#new">New arrivals</a>
+          <button onClick={showNewArrivals}>New arrivals</button>
           <button
             onClick={() => {
-              setCategory("Luxury Collection");
+              chooseCategory("Luxury Collection");
               scrollToShop();
             }}
           >
@@ -409,7 +425,7 @@ export default function Home() {
           </button>
           <button
             onClick={() => {
-              setCategory("Tote Bags");
+              chooseCategory("Tote Bags");
               scrollToShop();
             }}
           >
@@ -417,7 +433,7 @@ export default function Home() {
           </button>
           <button
             onClick={() => {
-              setCategory("Crossbody");
+              chooseCategory("Crossbody");
               scrollToShop();
             }}
           >
@@ -425,7 +441,7 @@ export default function Home() {
           </button>
           <button
             onClick={() => {
-              setCategory("Box Bags");
+              chooseCategory("Box Bags");
               scrollToShop();
             }}
           >
@@ -552,8 +568,10 @@ export default function Home() {
       <section className="shop-section" id="shop">
         <div className="shop-heading">
           <div>
-            <p className="eyebrow">Curated for you</p>
-            <h2>Shop all bags</h2>
+            <p className="eyebrow">
+              {newArrivalsOnly ? "Freshly added" : "Curated for you"}
+            </p>
+            <h2>{newArrivalsOnly ? "New arrivals" : "Shop all bags"}</h2>
           </div>
           <p>{filtered.length} styles</p>
         </div>
@@ -564,7 +582,10 @@ export default function Home() {
               aria-label="Search products"
               placeholder="Search by style, colour or collection"
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => {
+                setNewArrivalsOnly(false);
+                setSearch(e.target.value);
+              }}
             />
             {search && (
               <button
@@ -586,8 +607,8 @@ export default function Home() {
             ].map((item) => (
               <button
                 key={item}
-                className={category === item ? "active" : ""}
-                onClick={() => setCategory(item)}
+                className={!newArrivalsOnly && category === item ? "active" : ""}
+                onClick={() => chooseCategory(item)}
               >
                 {item}
               </button>
@@ -607,7 +628,10 @@ export default function Home() {
               Collection
               <select
                 value={collection}
-                onChange={(e) => setCollection(e.target.value)}
+                onChange={(e) => {
+                  setNewArrivalsOnly(false);
+                  setCollection(e.target.value);
+                }}
               >
                 <option>All collections</option>
                 <option>Everyday</option>
@@ -623,7 +647,10 @@ export default function Home() {
                 max="5500"
                 step="100"
                 value={maxPrice}
-                onChange={(e) => setMaxPrice(Number(e.target.value))}
+                onChange={(e) => {
+                  setNewArrivalsOnly(false);
+                  setMaxPrice(Number(e.target.value));
+                }}
               />
             </label>
             <label>
@@ -638,7 +665,7 @@ export default function Home() {
             </label>
             <button
               onClick={() => {
-                setCategory("All bags");
+                chooseCategory("All bags");
                 setCollection("All collections");
                 setMaxPrice(5500);
                 setSearch("");
@@ -732,7 +759,7 @@ export default function Home() {
             <button
               className="secondary-button"
               onClick={() => {
-                setCategory("All bags");
+                chooseCategory("All bags");
                 setCollection("All collections");
                 setMaxPrice(5500);
                 setSearch("");
@@ -802,7 +829,7 @@ export default function Home() {
         </div>
         <div>
           <h3>Shop</h3>
-          <a href="#shop">New arrivals</a>
+          <button onClick={showNewArrivals}>New arrivals</button>
           <a href="#shop">Luxury collection</a>
           <a href="#shop">Totes</a>
           <a href="#shop">Crossbody</a>
@@ -932,18 +959,19 @@ export default function Home() {
                 <button
                   key={item}
                   onClick={() => {
+                    if (item === "New arrivals") showNewArrivals();
                     if (item.toLowerCase().includes("luxury"))
-                      setCategory("Luxury Collection");
+                      chooseCategory("Luxury Collection");
                     if (item.toLowerCase().includes("tote"))
-                      setCategory("Tote Bags");
+                      chooseCategory("Tote Bags");
                     if (item.toLowerCase().includes("crossbody"))
-                      setCategory("Crossbody");
+                      chooseCategory("Crossbody");
                     if (item.toLowerCase().includes("box"))
-                      setCategory("Box Bags");
+                      chooseCategory("Box Bags");
                     setMenuOpen(false);
                     item === "Our story"
                       ? document.getElementById("story")?.scrollIntoView()
-                      : scrollToShop();
+                      : item !== "New arrivals" && scrollToShop();
                   }}
                 >
                   {item}
