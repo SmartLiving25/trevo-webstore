@@ -137,6 +137,19 @@ footer h3 { margin: 0 0 22px; color: white; font-family: var(--serif); font-size
 footer a, footer button:not(.brand) { display: block; margin: 0 0 13px; padding: 0; border: 0; background: transparent; color: #9f9a91; font-size: 11px; text-align: left; cursor: pointer; }
 footer a:hover, footer button:hover { color: white; }
 .footer-bottom { grid-column: 1 / -1; display: flex; justify-content: space-between; margin-top: 35px; padding-top: 25px; border-top: 1px solid #3b3934; color: #79756e; font-size: 9px; letter-spacing: .06em; text-transform: uppercase; }
+.social-links { display: grid; gap: 13px; }
+.social-links a { display: flex; align-items: center; gap: 9px; margin: 0; }
+.social-links svg { width: 16px; height: 16px; stroke-width: 1.7; }
+.facebook-icon { width: 16px; height: 16px; display: inline-grid; place-items: center; border: 1.5px solid currentColor; border-radius: 50%; font-family: Arial, Helvetica, sans-serif; font-size: 12px; font-weight: 700; line-height: 1; }
+.legal-links { display: flex; align-items: center; gap: 7px; }
+.legal-links button { display: inline; margin: 0; color: inherit; font-size: inherit; letter-spacing: inherit; text-transform: inherit; }
+.legal-backdrop { z-index: 145; }
+.legal-modal { position: fixed; z-index: 150; top: 50%; left: 50%; width: min(590px, calc(100% - 34px)); max-height: min(720px, calc(100dvh - 34px)); overflow-y: auto; padding: 54px clamp(28px, 5vw, 62px) 46px; background: var(--paper); box-shadow: 0 25px 90px rgba(28,25,20,.28); transform: translate(-50%, -50%); animation: legalModalIn .22s ease; }
+.legal-modal h2 { margin: 0; font-family: var(--serif); font-size: clamp(36px, 5vw, 52px); font-weight: 400; }
+.legal-intro { margin: 20px 0; color: var(--muted); font-family: var(--serif); font-size: 16px; line-height: 1.7; }
+.legal-modal ul { display: grid; gap: 12px; margin: 0 0 28px; padding: 20px 0 0 20px; border-top: 1px solid var(--soft-line); }
+.legal-modal li { padding-left: 5px; color: var(--muted); font-size: 12px; line-height: 1.65; }
+.legal-whatsapp { width: 100%; }
 
 .backdrop { position: fixed; z-index: 100; inset: 0; background: rgba(30,28,24,.48); backdrop-filter: blur(2px); animation: fadeIn .18s ease; }
 .drawer { position: fixed; z-index: 110; top: 0; right: 0; width: min(460px, 100%); height: 100dvh; display: flex; flex-direction: column; background: var(--paper); box-shadow: -18px 0 60px rgba(23,21,18,.14); animation: slideLeft .28s ease; }
@@ -200,6 +213,7 @@ footer a:hover, footer button:hover { color: white; }
 .detail-price { display: flex; gap: 12px; font-size: 13px; }
 .detail-price del { color: #aaa39a; }
 .detail-copy { margin: 25px 0; color: var(--muted); font-family: var(--serif); font-size: 15px; line-height: 1.75; }
+.colour-disclaimer { margin: -12px 0 24px; padding: 11px 13px; border-left: 2px solid var(--sage); background: var(--cream); color: var(--muted); font-size: 10px; line-height: 1.55; }
 .detail-meta { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; padding: 18px 0; border-top: 1px solid var(--soft-line); border-bottom: 1px solid var(--soft-line); }
 .detail-meta span { color: var(--muted); font-size: 9px; line-height: 1.5; }
 .detail-meta b { display: block; margin-bottom: 4px; color: var(--ink); text-transform: uppercase; }
@@ -277,6 +291,7 @@ footer a:hover, footer button:hover { color: white; }
 @keyframes slideLeft { from { transform: translateX(100%); } }
 @keyframes slideRight { from { transform: translateX(-100%); } }
 @keyframes modalIn { from { opacity: 0; transform: translateY(8px) scale(.99); } }
+@keyframes legalModalIn { from { opacity: 0; transform: translate(-50%, calc(-50% + 8px)) scale(.99); } }
 
 @media (max-width: 1080px) {
   .site-header { grid-template-columns: 180px 1fr 180px; padding-inline: 24px; }
@@ -702,22 +717,16 @@ footer a:hover, footer button:hover { color: white; }
 }
 
 .brand .brand-mark {
-  position: relative;
-  width: 48px;
-  height: 48px;
-  flex: 0 0 48px;
-  overflow: hidden;
+  width: 58px;
+  height: 58px;
+  flex: 0 0 58px;
   margin: 0;
 }
 
 .brand .brand-mark img {
-  position: absolute;
-  top: 0;
-  left: 50%;
-  width: 220px;
-  max-width: none;
-  height: auto;
-  transform: translateX(-50%);
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
 .brand .brand-name {
@@ -769,8 +778,7 @@ footer a:hover, footer button:hover { color: white; }
 
 @media (max-width: 640px) {
   .brand-lockup { gap: 7px; }
-  .brand .brand-mark { width: 38px; height: 38px; flex-basis: 38px; }
-  .brand .brand-mark img { width: 176px; }
+  .brand .brand-mark { width: 42px; height: 42px; flex-basis: 42px; }
   .brand .brand-name { font-size: 29px; }
   .variant-image-grid { grid-template-columns: 1fr; }
 }

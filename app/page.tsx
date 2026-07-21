@@ -10,7 +10,9 @@ import {
   ChevronRight,
   Heart,
   Menu,
+  MessageCircle,
   Minus,
+  Music2,
   PackageCheck,
   Plus,
   Search,
@@ -31,6 +33,7 @@ import {
 } from "../lib/catalog";
 
 type CartLine = { product: Product; quantity: number; color: string };
+type LegalPanel = "privacy" | "terms" | "returns";
 type CheckoutFields = {
   name: string;
   email: string;
@@ -54,6 +57,45 @@ const initialCheckout: CheckoutFields = {
 };
 
 const WhatsAppNumber = "923007041451";
+
+const legalContent: Record<
+  LegalPanel,
+  { title: string; introduction: string; points: string[] }
+> = {
+  privacy: {
+    title: "Privacy",
+    introduction:
+      "Trevo uses your information only to process orders, arrange delivery and provide customer support.",
+    points: [
+      "We collect the contact, delivery and order details you provide at checkout.",
+      "We do not store card details on this website. Payments are handled through the selected payment method.",
+      "We do not sell your personal information. It is shared only when needed to complete your order, such as with a delivery partner.",
+      "For a privacy question or data request, contact Trevo on WhatsApp.",
+    ],
+  },
+  terms: {
+    title: "Terms",
+    introduction:
+      "By placing an order, you confirm that the delivery and contact information you provide is correct.",
+    points: [
+      "Product availability, prices and delivery estimates are confirmed when your order is accepted.",
+      "Orders marked for advance payment are prepared for fulfillment after payment is confirmed.",
+      "Product colour may vary slightly from the original product online because of lighting and screen settings.",
+      "Trevo may contact you by phone or WhatsApp to confirm an order or delivery detail.",
+    ],
+  },
+  returns: {
+    title: "Returns",
+    introduction:
+      "If your parcel arrives damaged, you may request a return within 2 days of delivery.",
+    points: [
+      "Contact Trevo on WhatsApp within 2 days and include your order number.",
+      "Send clear photos or a short video showing the damage and the parcel packaging.",
+      "Keep the product unused and in its original packaging while your request is reviewed.",
+      "Approved damaged-item returns will be handled through WhatsApp with replacement or refund instructions.",
+    ],
+  },
+};
 
 function TrevoBrand({ light = false }: { light?: boolean }) {
   return <a className={`brand brand-lockup ${light ? "light" : ""}`} href="#top" aria-label="Trevo home"><span className="brand-mark" aria-hidden="true"><img src="/images/logo.png" alt="" /></span><span className="brand-name">Trevo</span></a>;
@@ -79,6 +121,7 @@ export default function Home() {
   const [submitting, setSubmitting] = useState(false);
   const [orderNumber, setOrderNumber] = useState("");
   const [checkoutError, setCheckoutError] = useState("");
+  const [legalPanel, setLegalPanel] = useState<LegalPanel | null>(null);
   const [storeProducts, setStoreProducts] =
     useState<Product[]>(catalogProducts);
 
@@ -124,6 +167,7 @@ export default function Home() {
       wishlistOpen ||
       accountOpen ||
       checkoutOpen ||
+      !!legalPanel ||
       !!selectedProduct ||
       menuOpen;
     document.body.style.overflow = open ? "hidden" : "";
@@ -135,6 +179,7 @@ export default function Home() {
     wishlistOpen,
     accountOpen,
     checkoutOpen,
+    legalPanel,
     selectedProduct,
     menuOpen,
   ]);
@@ -184,6 +229,7 @@ export default function Home() {
     setWishlistOpen(false);
     setAccountOpen(false);
     setCheckoutOpen(false);
+    setLegalPanel(null);
     setSelectedProduct(null);
     setMenuOpen(false);
   };
@@ -777,26 +823,88 @@ export default function Home() {
         </div>
         <div>
           <h3>Follow Trevo</h3>
-          <a
-            href="https://www.instagram.com/trevo_pk/"
-            target="_blank"
-            rel="noreferrer"
-          >
-            Instagram · @trevo_pk
-          </a>
-          <a
-            href="https://web.facebook.com/profile.php?id=61578912687234"
-            target="_blank"
-            rel="noreferrer"
-          >
-            Facebook
-          </a>
+          <div className="social-links">
+            <a
+              href="https://www.instagram.com/trevo_pk/"
+              target="_blank"
+              rel="noreferrer"
+              aria-label="Trevo on Instagram"
+            >
+              <Camera aria-hidden="true" /> Instagram
+            </a>
+            <a
+              href="https://web.facebook.com/profile.php?id=61578912687234"
+              target="_blank"
+              rel="noreferrer"
+              aria-label="Trevo on Facebook"
+            >
+              <span className="facebook-icon" aria-hidden="true">f</span> Facebook
+            </a>
+            <a
+              href="https://www.tiktok.com/@trevo_pk"
+              target="_blank"
+              rel="noreferrer"
+              aria-label="Trevo on TikTok"
+            >
+              <Music2 aria-hidden="true" /> TikTok
+            </a>
+            <a
+              href={`https://wa.me/${WhatsAppNumber}`}
+              target="_blank"
+              rel="noreferrer"
+              aria-label="Contact Trevo on WhatsApp"
+            >
+              <MessageCircle aria-hidden="true" /> WhatsApp
+            </a>
+          </div>
         </div>
         <div className="footer-bottom">
           <span>© 2026 Trevo. All rights reserved.</span>
-          <span>Privacy · Terms · Returns</span>
+          <div className="legal-links" aria-label="Store policies">
+            <button onClick={() => setLegalPanel("privacy")}>Privacy</button>
+            <span aria-hidden="true">·</span>
+            <button onClick={() => setLegalPanel("terms")}>Terms</button>
+            <span aria-hidden="true">·</span>
+            <button onClick={() => setLegalPanel("returns")}>Returns</button>
+          </div>
         </div>
       </footer>
+
+      {legalPanel && (
+        <>
+          <div className="backdrop legal-backdrop" onClick={() => setLegalPanel(null)} />
+          <section
+            className="legal-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="legal-title"
+          >
+            <button
+              className="modal-close"
+              aria-label="Close policy"
+              onClick={() => setLegalPanel(null)}
+            >
+              <X />
+            </button>
+            <p className="eyebrow">Trevo customer care</p>
+            <h2 id="legal-title">{legalContent[legalPanel].title}</h2>
+            <p className="legal-intro">{legalContent[legalPanel].introduction}</p>
+            <ul>
+              {legalContent[legalPanel].points.map((point) => (
+                <li key={point}>{point}</li>
+              ))}
+            </ul>
+            <a
+              className="primary-button legal-whatsapp"
+              href={`https://wa.me/${WhatsAppNumber}`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <MessageCircle size={17} /> Contact on WhatsApp
+            </a>
+          </section>
+        </>
+      )}
 
       {menuOpen && (
         <>
@@ -1177,6 +1285,9 @@ export default function Home() {
                 )}
               </div>
               <p className="detail-copy">{selectedProduct.description}</p>
+              <p className="colour-disclaimer">
+                Product colour may vary slightly from the original product online.
+              </p>
               <div className="detail-meta">
                 <span>
                   <b>Material</b>
