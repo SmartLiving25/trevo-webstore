@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft, BadgeDollarSign, CheckCircle2, CircleDollarSign, Edit3,
-  ExternalLink, LayoutDashboard, LogOut, Menu, MessageCircle, Package,
+  Download, ExternalLink, LayoutDashboard, LogOut, Menu, MessageCircle, Package,
   Plus, Search, ShoppingBag, Trash2, Users, X,
 } from "lucide-react";
 import {
@@ -72,6 +72,13 @@ function draftFromProduct(product: Product): ProductDraft {
     collection: product.collection, description: product.description, material: product.material,
     variants: productVariants(product).map((variant) => ({ ...variant, stock: String(variant.stock), images: [...variant.images, "", "", "", "", "", ""].slice(0, 6) })),
   };
+}
+
+function csvCell(value: string | number | boolean | null | undefined) {
+  let text = value == null ? "" : String(value);
+  // Stop spreadsheet applications from treating product text as a formula.
+  if (/^[=+\-@]/.test(text)) text = `'${text}`;
+  return `"${text.replaceAll('"', '""')}"`;
 }
 
 export default function AdminDashboard() {
@@ -176,6 +183,40 @@ export default function AdminDashboard() {
     else showToast("Product could not be deleted.");
   };
 
+  const downloadProductsCsv = () => {
+    const headings = [
+      "Product ID", "SKU", "Product name", "Category", "Collection",
+      "Price (PKR)", "Compare-at price (PKR)", "Status", "Total stock",
+      "Sizes", "Description", "Material", "Variant number", "Variant ID",
+      "Colour name", "Colour hex", "Colour stock", "Image 1", "Image 2",
+      "Image 3", "Image 4", "Image 5", "Image 6", "All product image URLs",
+    ];
+    const rows = storeProducts.flatMap((product) =>
+      productVariants(product).map((variant, variantIndex) => {
+        const images = [...variant.images, "", "", "", "", "", ""].slice(0, 6);
+        return [
+          product.id, product.sku, product.name, product.category,
+          product.collection, product.price, product.compareAt ?? "",
+          product.active === false ? "Inactive" : "Active", product.stock,
+          product.sizes.join(" | "), product.description, product.material,
+          variantIndex + 1, variant.id, variant.color, variant.colorHex,
+          variant.stock, ...images, product.images.join(" | "),
+        ];
+      }),
+    );
+
+    const csv = `\uFEFF${[headings, ...rows].map((row) => row.map(csvCell).join(",")).join("\r\n")}`;
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `trevo-products-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    showToast(`Downloaded ${storeProducts.length} products with colour variants and image URLs.`);
+  };
+
   const logout = async () => { await fetch("/api/admin/session", { method: "DELETE" }); window.location.href = "/admin/login"; };
   const menu: { tab: Tab; icon: React.ReactNode }[] = [
     { tab: "Overview", icon: <LayoutDashboard /> }, { tab: "Products", icon: <Package /> },
@@ -205,7 +246,7 @@ export default function AdminDashboard() {
           <div className="admin-split"><section className="admin-card recent-orders"><div className="card-title"><div><h2>Recent orders</h2><p>Newest Firestore orders</p></div><button onClick={() => setTab("Orders")}>View all</button></div><OrdersTable orders={orders.slice(0, 5)} onStatus={changeStatus} onPaid={markPaid} /></section>
           <section className="admin-card low-stock-card"><div className="card-title"><div><h2>Low stock alerts</h2><p>Variant stock combined</p></div><button onClick={() => setTab("Products")}>View all</button></div>{lowStock.map((product) => <div className="stock-row" key={product.id}><img src={product.images[0]} alt="" /><span><b>{product.name}</b><small>{product.sku}</small></span><strong>{product.stock} left</strong><button onClick={() => openEdit(product)}><Edit3 /></button></div>)}{!lowStock.length && <div className="admin-empty"><CheckCircle2 /><p>No low-stock products.</p></div>}</section></div>
         </div>}
-        {tab === "Products" && <div className="admin-content"><section className="page-title"><div><h1>Products</h1><p>{storeProducts.length} products · {storeProducts.reduce((sum, product) => sum + product.stock, 0)} total variant units</p></div><button className="solid-admin-button" onClick={openNew}><Plus /> Add product</button></section><section className="admin-card product-table-card"><div className="table-wrap"><table className="admin-table"><thead><tr><th>Product</th><th>Collection</th><th>Variants</th><th>Price</th><th>Inventory</th><th /></tr></thead><tbody>{matchingProducts.map((product) => <tr key={product.id}><td><div className="table-product"><img src={product.images[0]} alt="" /><span><b>{product.name}</b><small>{product.sku}</small></span></div></td><td>{product.collection}</td><td>{productVariants(product).map((variant) => <span key={variant.id} title={variant.color} style={{ display: "inline-block", width: 18, height: 18, borderRadius: "50%", background: variant.colorHex, border: "1px solid #bbb", marginRight: 5 }} />)}</td><td>{formatPKR(product.price)}</td><td><b>{product.stock}</b> units</td><td><button className="table-icon" title="Edit product" onClick={() => openEdit(product)}><Edit3 /></button><button className="table-icon danger-icon" title="Delete product" onClick={() => deleteProduct(product)}><Trash2 /></button></td></tr>)}</tbody></table></div></section></div>}
+        {tab === "Products" && <div className="admin-content"><section className="page-title"><div><h1>Products</h1><p>{storeProducts.length} products · {storeProducts.reduce((sum, product) => sum + product.stock, 0)} total variant units</p></div><div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}><button className="outline-admin-button" onClick={downloadProductsCsv} disabled={!storeProducts.length}><Download /> Download products CSV</button><button className="solid-admin-button" onClick={openNew}><Plus /> Add product</button></div></section><section className="admin-card product-table-card"><div className="table-wrap"><table className="admin-table"><thead><tr><th>Product</th><th>Collection</th><th>Variants</th><th>Price</th><th>Inventory</th><th /></tr></thead><tbody>{matchingProducts.map((product) => <tr key={product.id}><td><div className="table-product"><img src={product.images[0]} alt="" /><span><b>{product.name}</b><small>{product.sku}</small></span></div></td><td>{product.collection}</td><td>{productVariants(product).map((variant) => <span key={variant.id} title={variant.color} style={{ display: "inline-block", width: 18, height: 18, borderRadius: "50%", background: variant.colorHex, border: "1px solid #bbb", marginRight: 5 }} />)}</td><td>{formatPKR(product.price)}</td><td><b>{product.stock}</b> units</td><td><button className="table-icon" title="Edit product" onClick={() => openEdit(product)}><Edit3 /></button><button className="table-icon danger-icon" title="Delete product" onClick={() => deleteProduct(product)}><Trash2 /></button></td></tr>)}</tbody></table></div></section></div>}
         {tab === "Orders" && <div className="admin-content"><section className="page-title"><div><h1>Orders</h1><p>{orders.length} real customer orders from Firestore.</p></div></section><section className="admin-card recent-orders"><OrdersTable orders={matchingOrders} onStatus={changeStatus} onPaid={markPaid} /></section></div>}
         {tab === "Customers" && <div className="admin-content"><section className="page-title"><div><h1>Customers</h1><p>Generated from live orders.</p></div></section><section className="customer-grid">{matchingOrders.map((order) => <article className="admin-card customer-card" key={order.dbId}><div className="customer-avatar">{order.customer.split(" ").map((name) => name[0]).join("").slice(0, 2)}</div><h2>{order.customer}</h2><p>{order.city}, Pakistan</p><div><span><b>{order.items}</b>Items</span><span><b>{formatPKR(order.total)}</b>Order</span></div><a href={`https://wa.me/${order.phone}`} target="_blank" rel="noreferrer"><MessageCircle /> WhatsApp customer</a></article>)}</section></div>}
         {tab === "Payments" && <div className="admin-content"><section className="page-title"><div><h1>Payments</h1><p>Advance and payment status from live orders.</p></div></section><section className="metric-grid compact"><article><p>Paid revenue</p><h2>{formatPKR(paidRevenue)}</h2></article><article><p>Pending advance</p><h2>{formatPKR(pendingAdvance)}</h2></article><article><p>Paid orders</p><h2>{orders.filter((order) => order.payment === "Paid").length}</h2></article><article><p>Pending orders</p><h2>{orders.filter((order) => order.payment !== "Paid").length}</h2></article></section><section className="admin-card recent-orders"><OrdersTable orders={matchingOrders} onStatus={changeStatus} onPaid={markPaid} paymentOnly /></section></div>}
