@@ -31,6 +31,7 @@ import {
   type Product,
   type ProductVariant,
 } from "../lib/catalog";
+import { trackMetaEvent } from "../lib/meta-pixel";
 
 type CartLine = { product: Product; quantity: number; color: string };
 type LegalPanel = "privacy" | "terms" | "returns";
@@ -253,6 +254,13 @@ export default function Home() {
   };
 
   const openProduct = (product: Product) => {
+    trackMetaEvent("ViewContent", {
+      content_ids: [product.id],
+      content_name: product.name,
+      content_type: "product",
+      value: product.price,
+      currency: "PKR",
+    });
     setSelectedProduct(product);
     setActiveImage(0);
     setSelectedColor(productVariants(product)[0]?.color || "As shown");
@@ -280,6 +288,14 @@ export default function Home() {
       productVariants(product).find((variant) => variant.color === color)
         ?.stock ?? product.stock;
     if (variantStock < 1) return;
+    trackMetaEvent("AddToCart", {
+      content_ids: [product.id],
+      content_name: product.name,
+      content_type: "product",
+      value: product.price,
+      currency: "PKR",
+      color,
+    });
     setCart((current) => {
       const existing = current.find(
         (line) => line.product.id === product.id && line.color === color,
@@ -295,6 +311,23 @@ export default function Home() {
     });
     setSelectedProduct(null);
     if (open) setCartOpen(true);
+  };
+
+  const startCheckout = (directProduct?: Product) => {
+    const checkoutContents = directProduct
+      ? [{ id: directProduct.id, quantity: 1 }]
+      : cart.map((line) => ({
+          id: line.product.id,
+          quantity: line.quantity,
+        }));
+    trackMetaEvent("InitiateCheckout", {
+      content_ids: checkoutContents.map((item) => item.id),
+      contents: checkoutContents,
+      value: directProduct ? directProduct.price : total,
+      currency: "PKR",
+      num_items: directProduct ? 1 : count,
+    });
+    setCheckoutOpen(true);
   };
 
   const toggleWishlist = (id: string) => {
@@ -383,6 +416,17 @@ export default function Home() {
       if (!response.ok)
         throw new Error(data.error || "Order service unavailable");
       setOrderNumber(String(data.order.orderNumber));
+      trackMetaEvent("Purchase", {
+        content_ids: cart.map((line) => line.product.id),
+        contents: cart.map((line) => ({
+          id: line.product.id,
+          quantity: line.quantity,
+        })),
+        value: total,
+        currency: "PKR",
+        num_items: count,
+        order_id: String(data.order.orderNumber),
+      });
       setCart([]);
     } catch (error) {
       setCheckoutError(
@@ -1115,7 +1159,7 @@ export default function Home() {
                     className="primary-button full"
                     onClick={() => {
                       setCartOpen(false);
-                      setCheckoutOpen(true);
+                      startCheckout();
                     }}
                   >
                     Checkout now <ArrowRight size={17} />
@@ -1387,8 +1431,8 @@ export default function Home() {
                 disabled={selectedStock === 0}
                 onClick={() => {
                   addToCart(selectedProduct, selectedColor, false);
+                  startCheckout(selectedProduct);
                   setSelectedProduct(null);
-                  setCheckoutOpen(true);
                 }}
               >
                 Buy now
