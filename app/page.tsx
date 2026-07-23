@@ -238,8 +238,7 @@ export default function Home() {
     (sum, line) => sum + line.product.price * line.quantity,
     0,
   );
-  const shipping =
-    checkout.delivery === "urgent" ? 500 : subtotal >= 1500 ? 0 : 250;
+  const shipping = checkout.delivery === "urgent" ? 300 : subtotal >= 1500 ? 0 : 200;
   const total = subtotal + shipping;
   const count = cart.reduce((sum, line) => sum + line.quantity, 0);
 
@@ -1143,7 +1142,7 @@ export default function Home() {
                             {formatPKR(1500 - subtotal)} away from free
                             delivery.
                           </b>
-                          <small>Standard delivery is Rs. 250.</small>
+                          <small>Standard delivery is Rs. 200.</small>
                         </>
                       )}
                     </span>
@@ -1607,7 +1606,7 @@ export default function Home() {
                           <b>Standard delivery</b>
                           <small>3–5 working days · Free above Rs. 1,500</small>
                         </span>
-                        <strong>{subtotal >= 1500 ? "FREE" : "Rs. 250"}</strong>
+                        <strong>{subtotal >= 1500 ? "FREE" : "Rs. 200"}</strong>
                       </label>
                       <label
                         className={`choice-card ${checkout.delivery === "urgent" ? "selected" : ""}`}
@@ -1626,7 +1625,7 @@ export default function Home() {
                             1–2 working days · Never included in free shipping
                           </small>
                         </span>
-                        <strong>Rs. 500</strong>
+                        <strong>Rs. 300</strong>
                       </label>
                     </fieldset>
                     <fieldset>
