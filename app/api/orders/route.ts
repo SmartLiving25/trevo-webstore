@@ -83,12 +83,12 @@ export async function POST(request: Request) {
       (sum, item) => sum + item.unitPrice * item.quantity,
       0,
     );
-    const allowedShipping =
-      order.customer.delivery === "urgent"
-        ? 500
-        : calculatedSubtotal >= 1500
-          ? 0
-          : 250;
+    const allowedShipping = order.customer.delivery === "urgent"
+  ? 300
+  : calculatedSubtotal >= 1500
+    ? 0
+    : 200;
+    
 
     if (
       calculatedSubtotal !== order.subtotal ||
