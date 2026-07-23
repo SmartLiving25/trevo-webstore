@@ -18,7 +18,7 @@ export const createOrder = onCall({ enforceAppCheck: true, region: "asia-south1"
   if (!parsed.success) throw new HttpsError("invalid-argument", "Please check the order details.");
   const order = parsed.data;
   const subtotal = order.items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
-  const shipping = order.customer.delivery === "urgent" ? 500 : subtotal >= 1500 ? 0 : 250;
+  const shipping = order.customer.delivery === "urgent" ? 300 : subtotal >= 1500 ? 0 : 200;
   const total = subtotal + shipping;
   const orderNumber = `TRV-${new Date().toISOString().slice(2, 10).replaceAll("-", "")}-${Math.floor(1000 + Math.random() * 9000)}`;
   const ref = db.collection("orders").doc();
