@@ -32,7 +32,7 @@ const orderSchema = z.object({
   subtotal: z.number().int().min(0),
   shipping: z.number().int().min(0),
   total: z.number().int().min(0),
-  paymentStatus: z.enum(["pending_advance", "cod_advance_required"]),
+  paymentStatus: z.enum(["pending_advance", "cod", "cod_advance_required"]),
 });
 
 export async function GET() {
@@ -83,12 +83,7 @@ export async function POST(request: Request) {
       (sum, item) => sum + item.unitPrice * item.quantity,
       0,
     );
-    const allowedShipping = order.customer.delivery === "urgent"
-  ? 300
-  : calculatedSubtotal >= 1500
-    ? 0
-    : 200;
-    
+    const allowedShipping = 100;
 
     if (
       calculatedSubtotal !== order.subtotal ||
@@ -140,8 +135,9 @@ export async function POST(request: Request) {
         total: order.total,
         deliveryMethod: order.customer.delivery,
         paymentMethod: order.customer.payment,
-        paymentStatus: order.paymentStatus,
-        advanceAmount: order.customer.payment === "cod" ? 200 : order.total,
+        paymentStatus:
+          order.customer.payment === "cod" ? "cod" : "pending_advance",
+        advanceAmount: order.customer.payment === "cod" ? 0 : order.total,
         status: "new",
         trackingCode: "",
         createdAt: now,
@@ -173,7 +169,8 @@ export async function POST(request: Request) {
           id,
           orderNumber,
           status: "new",
-          paymentStatus: order.paymentStatus,
+          paymentStatus:
+            order.customer.payment === "cod" ? "cod" : "pending_advance",
         },
       },
       { status: 201 },
@@ -198,7 +195,7 @@ export async function PATCH(request: Request) {
       .enum(["new", "confirmed", "packed", "shipped", "delivered", "cancelled"])
       .optional(),
     paymentStatus: z
-      .enum(["pending_advance", "cod_advance_required", "paid", "refunded"])
+      .enum(["pending_advance", "cod", "cod_advance_required", "paid", "refunded"])
       .optional(),
     trackingCode: z.string().max(100).optional(),
   });
