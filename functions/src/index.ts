@@ -18,7 +18,7 @@ export const createOrder = onCall({ enforceAppCheck: true, region: "asia-south1"
   if (!parsed.success) throw new HttpsError("invalid-argument", "Please check the order details.");
   const order = parsed.data;
   const subtotal = order.items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
-  const shipping = order.customer.delivery === "urgent" ? 300 : subtotal >= 1500 ? 0 : 200;
+  const shipping = 100;
   const total = subtotal + shipping;
   const orderNumber = `TRV-${new Date().toISOString().slice(2, 10).replaceAll("-", "")}-${Math.floor(1000 + Math.random() * 9000)}`;
   const ref = db.collection("orders").doc();
@@ -32,8 +32,8 @@ export const createOrder = onCall({ enforceAppCheck: true, region: "asia-south1"
     snapshots.forEach((snapshot, index) => transaction.update(snapshot.ref, { stock: FieldValue.increment(-order.items[index].quantity), updatedAt: FieldValue.serverTimestamp() }));
     transaction.create(ref, {
       orderNumber, customer: order.customer, userId: request.auth?.uid ?? null, items: order.items, subtotal, shipping, total,
-      status: "new", paymentStatus: order.customer.payment === "cod" ? "cod_advance_required" : "pending_advance",
-      advanceAmount: order.customer.payment === "cod" ? 200 : total, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(),
+      status: "new", paymentStatus: order.customer.payment === "cod" ? "cod" : "pending_advance",
+      advanceAmount: order.customer.payment === "cod" ? 0 : total, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(),
     });
   });
   return { id: ref.id, orderNumber, subtotal, shipping, total, status: "new" };
@@ -41,7 +41,7 @@ export const createOrder = onCall({ enforceAppCheck: true, region: "asia-south1"
 
 export const updateOrder = onCall({ enforceAppCheck: true, region: "asia-south1" }, async (request) => {
   if (request.auth?.token.admin !== true) throw new HttpsError("permission-denied", "Admin access required.");
-  const parsed = z.object({ id: z.string(), status: z.enum(["new", "confirmed", "packed", "shipped", "delivered", "cancelled"]).optional(), paymentStatus: z.enum(["pending_advance", "cod_advance_required", "paid", "refunded"]).optional(), trackingCode: z.string().max(100).optional() }).safeParse(request.data);
+  const parsed = z.object({ id: z.string(), status: z.enum(["new", "confirmed", "packed", "shipped", "delivered", "cancelled"]).optional(), paymentStatus: z.enum(["pending_advance", "cod", "cod_advance_required", "paid", "refunded"]).optional(), trackingCode: z.string().max(100).optional() }).safeParse(request.data);
   if (!parsed.success) throw new HttpsError("invalid-argument", "Invalid order update.");
   const { id, ...updates } = parsed.data;
   await db.collection("orders").doc(id).update({ ...updates, updatedAt: FieldValue.serverTimestamp() });
