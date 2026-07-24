@@ -238,7 +238,7 @@ export default function Home() {
     (sum, line) => sum + line.product.price * line.quantity,
     0,
   );
-  const shipping = checkout.delivery === "urgent" ? 300 : subtotal >= 1500 ? 0 : 200;
+  const shipping = 100;
   const total = subtotal + shipping;
   const count = cart.reduce((sum, line) => sum + line.quantity, 0);
 
@@ -371,13 +371,13 @@ export default function Home() {
       ...lines,
       "",
       `Subtotal: ${formatPKR(subtotal)}`,
-      `Delivery: ${checkout.delivery === "urgent" ? "Urgent" : "Standard"} — ${shipping === 0 ? "Free" : formatPKR(shipping)}`,
+      `Delivery: Flat nationwide shipping — ${formatPKR(shipping)}`,
       `Total: ${formatPKR(total)}`,
-      `Payment: ${checkout.payment === "advance" ? "Advance payment" : "Cash on delivery (Rs. 200 advance required)"}`,
+      `Payment: ${checkout.payment === "advance" ? "Advance payment" : "Cash on delivery (no advance required)"}`,
       "",
       checkout.payment === "advance"
         ? "Please confirm the payment details. I need bank details via WhatsApp if I choose bank transfer."
-        : "Please confirm availability and the COD advance payment details.",
+        : "Please confirm availability and my cash-on-delivery order.",
     ].join("\n");
     return `https://wa.me/${WhatsAppNumber}?text=${encodeURIComponent(message)}`;
   };
@@ -403,7 +403,7 @@ export default function Home() {
       paymentStatus:
         checkout.payment === "advance"
           ? "pending_advance"
-          : "cod_advance_required",
+          : "cod",
     };
     try {
       const response = await fetch("/api/orders", {
@@ -466,7 +466,7 @@ export default function Home() {
   return (
     <main>
       <div className="announcement">
-        <span>Complimentary standard delivery on orders Rs. 1,500+</span>
+        <span>Flat nationwide delivery — Rs. 100</span>
         <span className="announcement-separator">•</span>
         <span>Advance payment has no extra fee</span>
       </div>
@@ -1129,22 +1129,8 @@ export default function Home() {
                   <div className="delivery-callout">
                     <PackageCheck size={18} />
                     <span>
-                      {subtotal >= 1500 ? (
-                        <>
-                          <b>You unlocked free standard delivery.</b>
-                          <small>
-                            Urgent delivery is always charged separately.
-                          </small>
-                        </>
-                      ) : (
-                        <>
-                          <b>
-                            {formatPKR(1500 - subtotal)} away from free
-                            delivery.
-                          </b>
-                          <small>Standard delivery is Rs. 200.</small>
-                        </>
-                      )}
+                      <b>Flat nationwide delivery</b>
+                      <small>Only Rs. 100 on every order.</small>
                     </span>
                   </div>
                   <div className="total-row">
@@ -1603,29 +1589,10 @@ export default function Home() {
                           }
                         />
                         <span>
-                          <b>Standard delivery</b>
-                          <small>3–5 working days · Free above Rs. 1,500</small>
+                          <b>Flat nationwide delivery</b>
+                          <small>Tracked delivery across Pakistan</small>
                         </span>
-                        <strong>{subtotal >= 1500 ? "FREE" : "Rs. 200"}</strong>
-                      </label>
-                      <label
-                        className={`choice-card ${checkout.delivery === "urgent" ? "selected" : ""}`}
-                      >
-                        <input
-                          type="radio"
-                          name="delivery"
-                          checked={checkout.delivery === "urgent"}
-                          onChange={() =>
-                            setCheckout({ ...checkout, delivery: "urgent" })
-                          }
-                        />
-                        <span>
-                          <b>Urgent delivery</b>
-                          <small>
-                            1–2 working days · Never included in free shipping
-                          </small>
-                        </span>
-                        <strong>Rs. 300</strong>
+                        <strong>Rs. 100</strong>
                       </label>
                     </fieldset>
                     <fieldset>
@@ -1662,9 +1629,7 @@ export default function Home() {
                         />
                         <span>
                           <b>Cash on delivery</b>
-                          <small>
-                            Rs. 200 security advance required before dispatch
-                          </small>
+                          <small>No advance payment required</small>
                         </span>
                         <strong>COD</strong>
                       </label>
@@ -1697,7 +1662,7 @@ export default function Home() {
                       </p>
                       <p>
                         <span>Delivery</span>
-                        <b>{shipping === 0 ? "Free" : formatPKR(shipping)}</b>
+                        <b>{formatPKR(shipping)}</b>
                       </p>
                       <p>
                         <span>Total</span>
@@ -1715,18 +1680,6 @@ export default function Home() {
                         Get bank-transfer instructions on WhatsApp
                       </a>
                     </div>
-                    {checkout.payment === "cod" && (
-                      <div className="advance-note">
-                        <ShieldCheck />
-                        <span>
-                          <b>Advance required: Rs. 200</b>
-                          <small>
-                            Pay to the same JazzCash/EasyPaisa number before
-                            dispatch. It is tracked against your order.
-                          </small>
-                        </span>
-                      </div>
-                    )}
                     {checkoutError && <p className="checkout-error" role="alert">{checkoutError}</p>}
                     <button
                       form="checkout-form"
