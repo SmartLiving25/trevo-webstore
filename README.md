@@ -42,11 +42,10 @@ The server recalculates subtotal, shipping and total. It never trusts browser to
 
 ## Store rules already implemented
 
-- Standard delivery: free for orders of Rs. 1,500 or more; otherwise Rs. 250.
-- Urgent delivery: Rs. 500 and never free.
+- Flat nationwide delivery: Rs. 100 on every order.
 - JazzCash and EasyPaisa: 0300 7041451 with no extra fee.
 - Bank transfer: customers request the current instructions through Trevo WhatsApp.
-- COD: Rs. 200 security advance required before dispatch and tracked separately.
+- COD: no advance payment required.
 - WhatsApp number: +92 300 7041451.
 
 ## Quick start
@@ -137,7 +136,7 @@ The webhook stores event payloads for the admin message history. Verify Meta web
 
 ## Payment integration
 
-The MVP can record manual advance-payment proofs and COD security advances. For an online gateway:
+The MVP supports cash on delivery with no advance payment and optional full advance-payment proofs. For an online gateway:
 
 1. Complete merchant onboarding with a supported provider.
 2. Set `PAYMENT_PROVIDER`, public/secret keys and `PAYMENT_WEBHOOK_SECRET` in the hosting environment.
@@ -152,8 +151,8 @@ Never store card number, CVV or full wallet credentials. Store the provider refe
 The Sites implementation uses tables for `products`, `orders`, `customers`, `payments` and `inventory_events`. Firestore uses collections with equivalent names. Important order fields:
 
 - `status`: new → confirmed → packed → shipped → delivered.
-- `paymentStatus`: pending_advance, cod_advance_required, paid or refunded.
-- `advanceAmount`: the amount required before fulfilment.
+- `paymentStatus`: `cod`, `pending_advance`, `paid` or `refunded`. The legacy `cod_advance_required` value remains readable for older orders.
+- `advanceAmount`: `0` for cash on delivery, or the full order total when the customer voluntarily pays in advance.
 - `items`: immutable order-line snapshots containing SKU, price, variant and quantity.
 - `trackingCode`: courier reference when shipped.
 
@@ -201,4 +200,3 @@ npm test
 ```
 
 GitHub stores the source but GitHub Pages cannot run this store's secure APIs. For a GitHub-based deployment, connect the repository to Vercel, choose Next.js, and use `npm run build:vercel`. Deploy Firebase Functions/Firestore/Storage first, add the `.env.example` values in Vercel, then connect `trevopk.com` and `www.trevopk.com`. Keep the old Netlify DNS records until the new Vercel address passes an end-to-end order test.
-
