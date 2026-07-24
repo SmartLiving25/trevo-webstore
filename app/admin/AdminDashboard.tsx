@@ -22,7 +22,7 @@ type AdminOrder = {
   total: number;
   items: number;
   status: "New" | "Confirmed" | "Packed" | "Shipped" | "Delivered" | "Cancelled";
-  payment: "Paid" | "Advance pending" | "COD advance due" | "Refunded";
+  payment: "Paid" | "Advance pending" | "Cash on delivery" | "Refunded";
   paymentStatus: string;
   advanceAmount: number;
   date: string;
@@ -59,7 +59,7 @@ function mapOrder(order: Record<string, unknown>): AdminOrder {
     total: Number(order.total || 0),
     items: Array.isArray(order.items) ? order.items.reduce((sum: number, item: { quantity?: number }) => sum + Number(item.quantity || 0), 0) : 0,
     status: statusLabel[String(order.status)] || "New",
-    payment: paymentStatus === "paid" ? "Paid" : paymentStatus === "refunded" ? "Refunded" : paymentStatus === "cod_advance_required" ? "COD advance due" : "Advance pending",
+    payment: paymentStatus === "paid" ? "Paid" : paymentStatus === "refunded" ? "Refunded" : paymentStatus === "cod" || paymentStatus === "cod_advance_required" ? "Cash on delivery" : "Advance pending",
     paymentStatus, advanceAmount: Number(order.advanceAmount || 0),
     date: order.createdAt ? new Date(String(order.createdAt)).toLocaleString("en-PK", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }) : "",
   };
@@ -118,7 +118,8 @@ export default function AdminDashboard() {
   const matchingOrders = useMemo(() => orders.filter((order) => `${order.orderNumber} ${order.customer} ${order.city}`.toLowerCase().includes(query.toLowerCase())), [orders, query]);
   const lowStock = storeProducts.filter((product) => product.stock <= 5);
   const paidRevenue = orders.filter((order) => order.payment === "Paid").reduce((sum, order) => sum + order.total, 0);
-  const pendingAdvance = orders.filter((order) => order.payment !== "Paid").reduce((sum, order) => sum + order.advanceAmount, 0);
+  const pendingAdvanceOrders = orders.filter((order) => order.paymentStatus === "pending_advance");
+  const pendingAdvance = pendingAdvanceOrders.reduce((sum, order) => sum + order.advanceAmount, 0);
   const customerCount = new Set(orders.map((order) => order.email || order.phone)).size;
 
   const patchOrder = async (order: AdminOrder, update: Record<string, string>) => {
@@ -240,7 +241,7 @@ export default function AdminDashboard() {
           <section className="metric-grid">
             <article><div className="metric-icon sage"><BadgeDollarSign /></div><p>Paid revenue</p><h2>{formatPKR(paidRevenue)}</h2><span>Verified paid orders</span></article>
             <article><div className="metric-icon rose"><ShoppingBag /></div><p>Orders</p><h2>{orders.length}</h2><span>{orders.filter((order) => order.status === "New").length} new</span></article>
-            <article><div className="metric-icon gold"><CircleDollarSign /></div><p>Pending advance</p><h2>{formatPKR(pendingAdvance)}</h2><span>{orders.filter((order) => order.payment !== "Paid").length} need action</span></article>
+            <article><div className="metric-icon gold"><CircleDollarSign /></div><p>Pending advance</p><h2>{formatPKR(pendingAdvance)}</h2><span>{pendingAdvanceOrders.length} need action</span></article>
             <article><div className="metric-icon blue"><Users /></div><p>Customers</p><h2>{customerCount}</h2><span>Unique order contacts</span></article>
           </section>
           <div className="admin-split"><section className="admin-card recent-orders"><div className="card-title"><div><h2>Recent orders</h2><p>Newest Firestore orders</p></div><button onClick={() => setTab("Orders")}>View all</button></div><OrdersTable orders={orders.slice(0, 5)} onStatus={changeStatus} onPaid={markPaid} /></section>
@@ -249,7 +250,7 @@ export default function AdminDashboard() {
         {tab === "Products" && <div className="admin-content"><section className="page-title"><div><h1>Products</h1><p>{storeProducts.length} products · {storeProducts.reduce((sum, product) => sum + product.stock, 0)} total variant units</p></div><div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}><button className="outline-admin-button" onClick={downloadProductsCsv} disabled={!storeProducts.length}><Download /> Download products CSV</button><button className="solid-admin-button" onClick={openNew}><Plus /> Add product</button></div></section><section className="admin-card product-table-card"><div className="table-wrap"><table className="admin-table"><thead><tr><th>Product</th><th>Collection</th><th>Variants</th><th>Price</th><th>Inventory</th><th /></tr></thead><tbody>{matchingProducts.map((product) => <tr key={product.id}><td><div className="table-product"><img src={product.images[0]} alt="" /><span><b>{product.name}</b><small>{product.sku}</small></span></div></td><td>{product.collection}</td><td>{productVariants(product).map((variant) => <span key={variant.id} title={variant.color} style={{ display: "inline-block", width: 18, height: 18, borderRadius: "50%", background: variant.colorHex, border: "1px solid #bbb", marginRight: 5 }} />)}</td><td>{formatPKR(product.price)}</td><td><b>{product.stock}</b> units</td><td><button className="table-icon" title="Edit product" onClick={() => openEdit(product)}><Edit3 /></button><button className="table-icon danger-icon" title="Delete product" onClick={() => deleteProduct(product)}><Trash2 /></button></td></tr>)}</tbody></table></div></section></div>}
         {tab === "Orders" && <div className="admin-content"><section className="page-title"><div><h1>Orders</h1><p>{orders.length} real customer orders from Firestore.</p></div></section><section className="admin-card recent-orders"><OrdersTable orders={matchingOrders} onStatus={changeStatus} onPaid={markPaid} /></section></div>}
         {tab === "Customers" && <div className="admin-content"><section className="page-title"><div><h1>Customers</h1><p>Generated from live orders.</p></div></section><section className="customer-grid">{matchingOrders.map((order) => <article className="admin-card customer-card" key={order.dbId}><div className="customer-avatar">{order.customer.split(" ").map((name) => name[0]).join("").slice(0, 2)}</div><h2>{order.customer}</h2><p>{order.city}, Pakistan</p><div><span><b>{order.items}</b>Items</span><span><b>{formatPKR(order.total)}</b>Order</span></div><a href={`https://wa.me/${order.phone}`} target="_blank" rel="noreferrer"><MessageCircle /> WhatsApp customer</a></article>)}</section></div>}
-        {tab === "Payments" && <div className="admin-content"><section className="page-title"><div><h1>Payments</h1><p>Advance and payment status from live orders.</p></div></section><section className="metric-grid compact"><article><p>Paid revenue</p><h2>{formatPKR(paidRevenue)}</h2></article><article><p>Pending advance</p><h2>{formatPKR(pendingAdvance)}</h2></article><article><p>Paid orders</p><h2>{orders.filter((order) => order.payment === "Paid").length}</h2></article><article><p>Pending orders</p><h2>{orders.filter((order) => order.payment !== "Paid").length}</h2></article></section><section className="admin-card recent-orders"><OrdersTable orders={matchingOrders} onStatus={changeStatus} onPaid={markPaid} paymentOnly /></section></div>}
+        {tab === "Payments" && <div className="admin-content"><section className="page-title"><div><h1>Payments</h1><p>Payment status from live orders.</p></div></section><section className="metric-grid compact"><article><p>Paid revenue</p><h2>{formatPKR(paidRevenue)}</h2></article><article><p>Pending advance</p><h2>{formatPKR(pendingAdvance)}</h2></article><article><p>Paid orders</p><h2>{orders.filter((order) => order.payment === "Paid").length}</h2></article><article><p>COD orders</p><h2>{orders.filter((order) => order.paymentStatus === "cod").length}</h2></article></section><section className="admin-card recent-orders"><OrdersTable orders={matchingOrders} onStatus={changeStatus} onPaid={markPaid} paymentOnly /></section></div>}
       </>}
     </section>
     {editorOpen && <ProductEditor draft={draft} setDraft={setDraft} updateVariant={updateVariant} updateImage={updateImage} onSubmit={saveProduct} onClose={() => setEditorOpen(false)} saving={saving} />}
