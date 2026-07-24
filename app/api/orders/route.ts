@@ -5,6 +5,8 @@ import { getAdminSessionUser } from "@/lib/firebase/admin-session";
 
 export const runtime = "nodejs";
 
+class InventoryError extends Error {}
+
 const orderSchema = z.object({
   customer: z.object({
     name: z.string().min(2).max(100),
@@ -110,16 +112,121 @@ export async function POST(request: Request) {
     const counterReference = database
       .collection("counters")
       .doc(`orders-${dateKey}`);
+    const productIds = [...new Set(order.items.map((item) => item.productId))];
+    const productReferences = productIds.map((productId) =>
+      database.collection("products").doc(productId),
+    );
     let orderNumber = "";
 
     await database.runTransaction(async (transaction) => {
-      const [existingCustomer, counterSnapshot] = await Promise.all([
-        transaction.get(customerReference),
-        transaction.get(counterReference),
-      ]);
+      const [existingCustomer, counterSnapshot, ...productSnapshots] =
+        await Promise.all([
+          transaction.get(customerReference),
+          transaction.get(counterReference),
+          ...productReferences.map((reference) => transaction.get(reference)),
+        ]);
       const sequence = Number(counterSnapshot.data()?.value || 0) + 1;
       orderNumber = `TRV-${dateKey.slice(2)}-${String(sequence).padStart(4, "0")}`;
       const previous = existingCustomer.data();
+
+      productSnapshots.forEach((productSnapshot, productIndex) => {
+        if (!productSnapshot.exists) {
+          throw new InventoryError(
+            "A product in your cart is no longer available.",
+          );
+        }
+
+        const product = productSnapshot.data() as Record<string, unknown>;
+        if (product.active === false) {
+          throw new InventoryError(
+            `${String(product.name || "A product")} is no longer available.`,
+          );
+        }
+
+        const requestedItems = order.items.filter(
+          (item) => item.productId === productSnapshot.id,
+        );
+        const savedPrice = Number(product.price);
+        if (
+          !Number.isFinite(savedPrice) ||
+          requestedItems.some((item) => item.unitPrice !== savedPrice)
+        ) {
+          throw new InventoryError(
+            `The price of ${String(product.name || "a product")} has changed. Please refresh your cart.`,
+          );
+        }
+
+        const requestedByColor = new Map<string, number>();
+        requestedItems.forEach((item) => {
+          const colorKey = item.color.trim().toLowerCase();
+          requestedByColor.set(
+            colorKey,
+            (requestedByColor.get(colorKey) || 0) + item.quantity,
+          );
+        });
+
+        const savedVariants = Array.isArray(product.variants)
+          ? (product.variants as Array<Record<string, unknown>>)
+          : [];
+        let updatedStock = 0;
+        let inventoryUpdate: Record<string, unknown>;
+
+        if (savedVariants.length) {
+          const matchedColors = new Set<string>();
+          const updatedVariants = savedVariants.map((variant) => {
+            const color = String(variant.color || "").trim();
+            const colorKey = color.toLowerCase();
+            const requestedQuantity = requestedByColor.get(colorKey) || 0;
+            const currentStock = Math.max(0, Number(variant.stock || 0));
+
+            if (requestedQuantity > 0) {
+              matchedColors.add(colorKey);
+              if (currentStock < requestedQuantity) {
+                throw new InventoryError(
+                  `${String(product.name || "This product")} in ${color} has only ${currentStock} left.`,
+                );
+              }
+            }
+
+            const remainingStock = currentStock - requestedQuantity;
+            updatedStock += remainingStock;
+            return { ...variant, stock: remainingStock };
+          });
+
+          const missingColor = [...requestedByColor.keys()].find(
+            (color) => !matchedColors.has(color),
+          );
+          if (missingColor) {
+            throw new InventoryError(
+              `The selected colour for ${String(product.name || "a product")} is no longer available.`,
+            );
+          }
+
+          inventoryUpdate = {
+            variants: updatedVariants,
+            stock: updatedStock,
+            updatedAt: now,
+          };
+        } else {
+          const requestedQuantity = requestedItems.reduce(
+            (sum, item) => sum + item.quantity,
+            0,
+          );
+          const currentStock = Math.max(0, Number(product.stock || 0));
+          if (currentStock < requestedQuantity) {
+            throw new InventoryError(
+              `${String(product.name || "This product")} has only ${currentStock} left.`,
+            );
+          }
+          inventoryUpdate = {
+            stock: currentStock - requestedQuantity,
+            updatedAt: now,
+          };
+        }
+
+        transaction.update(productReferences[productIndex], inventoryUpdate);
+      });
+
       const savedOrder = {
         id,
         orderNumber,
@@ -140,6 +247,7 @@ export async function POST(request: Request) {
         advanceAmount: order.customer.payment === "cod" ? 0 : order.total,
         status: "new",
         trackingCode: "",
+        inventoryDeducted: true,
         createdAt: now,
         updatedAt: now,
       };
@@ -175,7 +283,10 @@ export async function POST(request: Request) {
       },
       { status: 201 },
     );
-  } catch {
+  } catch (error) {
+    if (error instanceof InventoryError) {
+      return Response.json({ error: error.message }, { status: 409 });
+    }
     return Response.json({ error: "Unable to create order." }, { status: 500 });
   }
 }
