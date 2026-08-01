@@ -1,6 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import type { User } from "firebase/auth";
+import {
+  createUserWithEmailAndPassword,
+  onAuthStateChanged,
+  sendPasswordResetEmail,
+  signInWithEmailAndPassword,
+  signOut,
+  updateProfile,
+} from "firebase/auth";
 import {
   ArrowRight,
   Camera,
@@ -10,7 +19,9 @@ import {
   ChevronRight,
   Heart,
   Menu,
+  MessageCircle,
   Minus,
+  Music2,
   PackageCheck,
   Plus,
   Search,
@@ -27,9 +38,15 @@ import {
   productVariants,
   products as catalogProducts,
   type Product,
+  type ProductVariant,
 } from "../lib/catalog";
+import { trackMetaEvent } from "../lib/meta-pixel";
+import { firebaseAuth } from "../lib/firebase/client";
 
 type CartLine = { product: Product; quantity: number; color: string };
+type LegalPanel = "privacy" | "terms" | "returns";
+type AccountMode = "welcome" | "signin" | "register";
+type AuthNotice = { kind: "success" | "error"; text: string };
 type CheckoutFields = {
   name: string;
   email: string;
@@ -54,6 +71,108 @@ const initialCheckout: CheckoutFields = {
 
 const WhatsAppNumber = "923007041451";
 
+function customerAuthMessage(error: unknown) {
+  const code =
+    typeof error === "object" && error && "code" in error
+      ? String(error.code)
+      : "";
+
+  if (
+    code.includes("invalid-credential") ||
+    code.includes("wrong-password") ||
+    code.includes("user-not-found")
+  ) {
+    return "The email or password is incorrect.";
+  }
+  if (code.includes("email-already-in-use")) {
+    return "An account already exists for this email. Please sign in instead.";
+  }
+  if (code.includes("weak-password")) {
+    return "Please choose a password with at least 6 characters.";
+  }
+  if (code.includes("invalid-email")) {
+    return "Please enter a valid email address.";
+  }
+  if (code.includes("too-many-requests")) {
+    return "Too many attempts. Please wait a little and try again.";
+  }
+  return "We could not complete that request. Please try again.";
+}
+
+const legalContent: Record<
+  LegalPanel,
+  { title: string; introduction: string; points: string[] }
+> = {
+  privacy: {
+    title: "Privacy",
+    introduction:
+      "Trevo uses your information only to process orders, arrange delivery and provide customer support.",
+    points: [
+      "We collect the contact, delivery and order details you provide at checkout.",
+      "We do not store card details on this website. Payments are handled through the selected payment method.",
+      "We do not sell your personal information. It is shared only when needed to complete your order, such as with a delivery partner.",
+      "For a privacy question or data request, contact Trevo on WhatsApp.",
+    ],
+  },
+  terms: {
+    title: "Terms",
+    introduction:
+      "By placing an order, you confirm that the delivery and contact information you provide is correct.",
+    points: [
+      "Product availability, prices and delivery estimates are confirmed when your order is accepted.",
+      "Orders marked for advance payment are prepared for fulfillment after payment is confirmed.",
+      "Product colour may vary slightly from the original product online because of lighting and screen settings.",
+      "Trevo may contact you by phone or WhatsApp to confirm an order or delivery detail.",
+    ],
+  },
+  returns: {
+    title: "Returns",
+    introduction:
+      "If your parcel arrives damaged, you may request a return within 2 days of delivery.",
+    points: [
+      "Contact Trevo on WhatsApp within 2 days and include your order number.",
+      "Send clear photos or a short video showing the damage and the parcel packaging.",
+      "Keep the product unused and in its original packaging while your request is reviewed.",
+      "Approved damaged-item returns will be handled through WhatsApp with replacement or refund instructions.",
+    ],
+  },
+};
+
+function TrevoBrand({ light = false }: { light?: boolean }) {
+  return (
+    <a
+      className={`brand brand-lockup ${light ? "light" : ""}`}
+      href="#top"
+      aria-label="Trevo home"
+    >
+      <span className="brand-mark" aria-hidden="true">
+        <img src="/images/logo.png" alt="" />
+      </span>
+      <span className="brand-name">Trevo</span>
+    </a>
+  );
+}
+
+async function syncCustomerAccount(
+  user: User,
+  name: string,
+  activity: "register" | "signin",
+) {
+  const token = await user.getIdToken();
+  const response = await fetch("/api/customer-account", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ name, activity }),
+  });
+
+  if (!response.ok) {
+    throw new Error("Customer profile could not be saved.");
+  }
+}
+
 export default function Home() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
@@ -68,15 +187,24 @@ export default function Home() {
   const [category, setCategory] = useState("All bags");
   const [collection, setCollection] = useState("All collections");
   const [maxPrice, setMaxPrice] = useState(5000);
+  const [newArrivalsOnly, setNewArrivalsOnly] = useState(false);
   const [cart, setCart] = useState<CartLine[]>([]);
   const [wishlist, setWishlist] = useState<string[]>([]);
   const [checkout, setCheckout] = useState<CheckoutFields>(initialCheckout);
   const [submitting, setSubmitting] = useState(false);
   const [orderNumber, setOrderNumber] = useState("");
   const [checkoutError, setCheckoutError] = useState("");
+  const [legalPanel, setLegalPanel] = useState<LegalPanel | null>(null);
   const [storeProducts, setStoreProducts] =
     useState<Product[]>(catalogProducts);
-  const [logoLoaded, setLogoLoaded] = useState(false);
+  const [accountMode, setAccountMode] = useState<AccountMode>("welcome");
+  const [accountUser, setAccountUser] = useState<User | null>(null);
+  const [authReady, setAuthReady] = useState(false);
+  const [authName, setAuthName] = useState("");
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authBusy, setAuthBusy] = useState(false);
+  const [authNotice, setAuthNotice] = useState<AuthNotice | null>(null);
 
   useEffect(() => {
     try {
@@ -107,6 +235,30 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    if (!firebaseAuth) {
+      setAuthReady(true);
+      return;
+    }
+
+    return onAuthStateChanged(firebaseAuth, (user) => {
+      setAccountUser(user);
+      setAuthReady(true);
+      if (user) {
+        setCheckout((current) => ({
+          ...current,
+          name: current.name || user.displayName || "",
+          email: current.email || user.email || "",
+        }));
+        void syncCustomerAccount(
+          user,
+          user.displayName || "",
+          "signin",
+        ).catch(() => undefined);
+      }
+    });
+  }, []);
+
+  useEffect(() => {
     localStorage.setItem("trevo-cart", JSON.stringify(cart));
   }, [cart]);
 
@@ -120,6 +272,7 @@ export default function Home() {
       wishlistOpen ||
       accountOpen ||
       checkoutOpen ||
+      !!legalPanel ||
       !!selectedProduct ||
       menuOpen;
     document.body.style.overflow = open ? "hidden" : "";
@@ -131,20 +284,23 @@ export default function Home() {
     wishlistOpen,
     accountOpen,
     checkoutOpen,
+    legalPanel,
     selectedProduct,
     menuOpen,
   ]);
 
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
-    return storeProducts.filter((product) => {
+    const selectedCategory = category.trim().toLowerCase();
+    const matchingProducts = storeProducts.filter((product) => {
       const matchesQuery =
         !query ||
         `${product.name} ${product.category} ${product.collection} ${product.colors.join(" ")}`
           .toLowerCase()
           .includes(query);
       const matchesCategory =
-        category === "All bags" || product.category === category;
+        selectedCategory === "all bags" ||
+        String(product.category).trim().toLowerCase() === selectedCategory;
       const matchesCollection =
         collection === "All collections" || product.collection === collection;
       return (
@@ -154,24 +310,38 @@ export default function Home() {
         product.price <= maxPrice
       );
     });
-  }, [storeProducts, search, category, collection, maxPrice]);
+    return newArrivalsOnly ? matchingProducts.slice(0, 6) : matchingProducts;
+  }, [storeProducts, search, category, collection, maxPrice, newArrivalsOnly]);
 
+  const availableCategories = useMemo(
+    () => [
+      "All bags",
+      ...Array.from(
+        new Set(
+          storeProducts
+            .map((product) => String(product.category).trim())
+            .filter(Boolean),
+        ),
+      ).sort((a, b) => a.localeCompare(b)),
+    ],
+    [storeProducts],
+  );
+
+  const selectedVariants = selectedProduct ? productVariants(selectedProduct) : [];
+  const gallerySlides = selectedVariants.flatMap((variant) => variant.images.map((image) => ({ image, variantId: variant.id, color: variant.color })));
+  const currentSlide = gallerySlides[activeImage] || gallerySlides[0];
   const selectedVariant = selectedProduct
-    ? productVariants(selectedProduct).find(
+    ? selectedVariants.find(
         (variant) => variant.color === selectedColor,
-      ) || productVariants(selectedProduct)[0]
+      ) || selectedVariants[0]
     : null;
-  const selectedImages = selectedVariant?.images.length
-    ? selectedVariant.images
-    : selectedProduct?.images || [];
   const selectedStock = selectedVariant?.stock ?? selectedProduct?.stock ?? 0;
 
   const subtotal = cart.reduce(
     (sum, line) => sum + line.product.price * line.quantity,
     0,
   );
-  const shipping =
-    checkout.delivery === "urgent" ? 500 : subtotal >= 1500 ? 0 : 250;
+  const shipping = 100;
   const total = subtotal + shipping;
   const count = cart.reduce((sum, line) => sum + line.quantity, 0);
 
@@ -180,14 +350,35 @@ export default function Home() {
     setWishlistOpen(false);
     setAccountOpen(false);
     setCheckoutOpen(false);
+    setLegalPanel(null);
     setSelectedProduct(null);
     setMenuOpen(false);
   };
 
   const openProduct = (product: Product) => {
+    trackMetaEvent("ViewContent", {
+      content_ids: [product.id],
+      content_name: product.name,
+      content_type: "product",
+      value: product.price,
+      currency: "PKR",
+    });
     setSelectedProduct(product);
     setActiveImage(0);
     setSelectedColor(productVariants(product)[0]?.color || "As shown");
+  };
+
+  const moveGallery = (direction: -1 | 1) => {
+    if (!gallerySlides.length) return;
+    const nextIndex = (activeImage + direction + gallerySlides.length) % gallerySlides.length;
+    setActiveImage(nextIndex);
+    setSelectedColor(gallerySlides[nextIndex].color);
+  };
+
+  const chooseVariant = (variant: ProductVariant) => {
+    const firstImageIndex = gallerySlides.findIndex((slide) => slide.variantId === variant.id);
+    setSelectedColor(variant.color);
+    setActiveImage(firstImageIndex >= 0 ? firstImageIndex : 0);
   };
 
   const addToCart = (
@@ -199,6 +390,14 @@ export default function Home() {
       productVariants(product).find((variant) => variant.color === color)
         ?.stock ?? product.stock;
     if (variantStock < 1) return;
+    trackMetaEvent("AddToCart", {
+      content_ids: [product.id],
+      content_name: product.name,
+      content_type: "product",
+      value: product.price,
+      currency: "PKR",
+      color,
+    });
     setCart((current) => {
       const existing = current.find(
         (line) => line.product.id === product.id && line.color === color,
@@ -216,12 +415,120 @@ export default function Home() {
     if (open) setCartOpen(true);
   };
 
+  const startCheckout = (directProduct?: Product) => {
+    const checkoutContents = directProduct
+      ? [{ id: directProduct.id, quantity: 1 }]
+      : cart.map((line) => ({
+          id: line.product.id,
+          quantity: line.quantity,
+        }));
+    trackMetaEvent("InitiateCheckout", {
+      content_ids: checkoutContents.map((item) => item.id),
+      contents: checkoutContents,
+      value: directProduct ? directProduct.price : total,
+      currency: "PKR",
+      num_items: directProduct ? 1 : count,
+    });
+    setCheckoutOpen(true);
+  };
+
   const toggleWishlist = (id: string) => {
     setWishlist((current) =>
       current.includes(id)
         ? current.filter((item) => item !== id)
         : [...current, id],
     );
+  };
+
+  const submitCustomerAuth = async () => {
+    if (!firebaseAuth) {
+      setAuthNotice({
+        kind: "error",
+        text: "Customer sign-in is not configured yet. Please check the Firebase environment variables.",
+      });
+      return;
+    }
+
+    setAuthBusy(true);
+    setAuthNotice(null);
+    try {
+      if (accountMode === "register") {
+        const credential = await createUserWithEmailAndPassword(
+          firebaseAuth,
+          authEmail.trim(),
+          authPassword,
+        );
+        const customerName = authName.trim();
+        if (customerName) {
+          await updateProfile(credential.user, { displayName: customerName });
+        }
+        await syncCustomerAccount(
+          credential.user,
+          customerName || credential.user.displayName || "",
+          "register",
+        );
+        setAuthNotice({
+          kind: "success",
+          text: "Your Trevo account is ready.",
+        });
+      } else {
+        const credential = await signInWithEmailAndPassword(
+          firebaseAuth,
+          authEmail.trim(),
+          authPassword,
+        );
+        await syncCustomerAccount(
+          credential.user,
+          credential.user.displayName || "",
+          "signin",
+        );
+        setAuthNotice({
+          kind: "success",
+          text: "You are now signed in.",
+        });
+      }
+      setAuthPassword("");
+    } catch (error) {
+      setAuthNotice({ kind: "error", text: customerAuthMessage(error) });
+    } finally {
+      setAuthBusy(false);
+    }
+  };
+
+  const resetCustomerPassword = async () => {
+    if (!firebaseAuth || !authEmail.trim()) {
+      setAuthNotice({
+        kind: "error",
+        text: "Enter your email address first, then select Forgot password.",
+      });
+      return;
+    }
+
+    setAuthBusy(true);
+    setAuthNotice(null);
+    try {
+      await sendPasswordResetEmail(firebaseAuth, authEmail.trim());
+      setAuthNotice({
+        kind: "success",
+        text: "Password reset instructions have been sent to your email.",
+      });
+    } catch (error) {
+      setAuthNotice({ kind: "error", text: customerAuthMessage(error) });
+    } finally {
+      setAuthBusy(false);
+    }
+  };
+
+  const signOutCustomer = async () => {
+    if (!firebaseAuth) return;
+    setAuthBusy(true);
+    try {
+      await signOut(firebaseAuth);
+      setAccountMode("welcome");
+      setAuthNotice({ kind: "success", text: "You have been signed out." });
+    } finally {
+      setAuthBusy(false);
+    }
   };
 
   const updateQuantity = (id: string, color: string, amount: number) => {
@@ -258,13 +565,13 @@ export default function Home() {
       ...lines,
       "",
       `Subtotal: ${formatPKR(subtotal)}`,
-      `Delivery: ${checkout.delivery === "urgent" ? "Urgent" : "Standard"} — ${shipping === 0 ? "Free" : formatPKR(shipping)}`,
+      `Delivery: Flat nationwide shipping — ${formatPKR(shipping)}`,
       `Total: ${formatPKR(total)}`,
-      `Payment: ${checkout.payment === "advance" ? "Advance payment" : "Cash on delivery (Rs. 200 advance required)"}`,
+      `Payment: ${checkout.payment === "advance" ? "Advance payment" : "Cash on delivery (no advance required)"}`,
       "",
       checkout.payment === "advance"
         ? "Please confirm the payment details. I need bank details via WhatsApp if I choose bank transfer."
-        : "Please confirm availability and the COD advance payment details.",
+        : "Please confirm availability and my cash-on-delivery order.",
     ].join("\n");
     return `https://wa.me/${WhatsAppNumber}?text=${encodeURIComponent(message)}`;
   };
@@ -290,7 +597,7 @@ export default function Home() {
       paymentStatus:
         checkout.payment === "advance"
           ? "pending_advance"
-          : "cod_advance_required",
+          : "cod",
     };
     try {
       const response = await fetch("/api/orders", {
@@ -302,6 +609,17 @@ export default function Home() {
       if (!response.ok)
         throw new Error(data.error || "Order service unavailable");
       setOrderNumber(String(data.order.orderNumber));
+      trackMetaEvent("Purchase", {
+        content_ids: cart.map((line) => line.product.id),
+        contents: cart.map((line) => ({
+          id: line.product.id,
+          quantity: line.quantity,
+        })),
+        value: total,
+        currency: "PKR",
+        num_items: count,
+        order_id: String(data.order.orderNumber),
+      });
       setCart([]);
     } catch (error) {
       setCheckoutError(
@@ -316,10 +634,33 @@ export default function Home() {
   const scrollToShop = () =>
     document.getElementById("shop")?.scrollIntoView({ behavior: "smooth" });
 
+  const showNewArrivals = () => {
+    setCategory("All bags");
+    setCollection("All collections");
+    setMaxPrice(5500);
+    setSearch("");
+    setNewArrivalsOnly(true);
+    window.requestAnimationFrame(scrollToShop);
+  };
+
+  const chooseCategory = (nextCategory: string) => {
+    setNewArrivalsOnly(false);
+    setCategory(nextCategory);
+  };
+
+  const showAllProducts = () => {
+    setCategory("All bags");
+    setCollection("All collections");
+    setMaxPrice(5500);
+    setSearch("");
+    setNewArrivalsOnly(false);
+    window.requestAnimationFrame(scrollToShop);
+  };
+
   return (
     <main>
       <div className="announcement">
-        <span>Complimentary standard delivery on orders Rs. 1,500+</span>
+        <span>Flat nationwide delivery — Rs. 100</span>
         <span className="announcement-separator">•</span>
         <span>Advance payment has no extra fee</span>
       </div>
@@ -333,17 +674,12 @@ export default function Home() {
         >
           <Menu size={21} />
         </button>
-        <a className="brand logo-brand" href="#top" aria-label="Trevo home">
-          <img src="/images/logo.png" alt="Trevo" onLoad={() => setLogoLoaded(true)} onError={(event) => { event.currentTarget.style.display = "none"; }} />
-          {!logoLoaded && <span className="brand-fallback">
-            TREVO<small>Effortless style</small>
-          </span>}
-        </a>
+        <TrevoBrand />
         <nav className="desktop-nav" aria-label="Main navigation">
-          <a href="#new">New arrivals</a>
+          <button onClick={showNewArrivals}>New arrivals</button>
           <button
             onClick={() => {
-              setCategory("Luxury Collection");
+              chooseCategory("Luxury Collection");
               scrollToShop();
             }}
           >
@@ -351,7 +687,7 @@ export default function Home() {
           </button>
           <button
             onClick={() => {
-              setCategory("Tote Bags");
+              chooseCategory("Tote Bags");
               scrollToShop();
             }}
           >
@@ -359,7 +695,7 @@ export default function Home() {
           </button>
           <button
             onClick={() => {
-              setCategory("Crossbody");
+              chooseCategory("Crossbody");
               scrollToShop();
             }}
           >
@@ -367,7 +703,7 @@ export default function Home() {
           </button>
           <button
             onClick={() => {
-              setCategory("Box Bags");
+              chooseCategory("Box Bags");
               scrollToShop();
             }}
           >
@@ -430,12 +766,14 @@ export default function Home() {
             Thoughtful silhouettes for work, weekends and every version of you.
           </p>
           <div className="hero-actions">
-            <button className="primary-button" onClick={scrollToShop}>
+            <button className="primary-button" onClick={showAllProducts}>
               Shop the collection <ArrowRight size={17} />
             </button>
             <button
               className="text-button"
               onClick={() => {
+                setNewArrivalsOnly(false);
+                setCategory("All bags");
                 setCollection("Luxury");
                 scrollToShop();
               }}
@@ -494,8 +832,16 @@ export default function Home() {
       <section className="shop-section" id="shop">
         <div className="shop-heading">
           <div>
-            <p className="eyebrow">Curated for you</p>
-            <h2>Shop all bags</h2>
+            <p className="eyebrow">
+              {newArrivalsOnly ? "Freshly added" : "Curated for you"}
+            </p>
+            <h2>
+              {newArrivalsOnly
+                ? "New arrivals"
+                : category === "All bags"
+                  ? "Shop all bags"
+                  : category}
+            </h2>
           </div>
           <p>{filtered.length} styles</p>
         </div>
@@ -506,7 +852,10 @@ export default function Home() {
               aria-label="Search products"
               placeholder="Search by style, colour or collection"
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => {
+                setNewArrivalsOnly(false);
+                setSearch(e.target.value);
+              }}
             />
             {search && (
               <button
@@ -519,17 +868,11 @@ export default function Home() {
             )}
           </div>
           <div className="quick-categories">
-            {[
-              "All bags",
-              "Luxury Collection",
-              "Tote Bags",
-              "Crossbody",
-              "Box Bags",
-            ].map((item) => (
+            {availableCategories.map((item) => (
               <button
                 key={item}
-                className={category === item ? "active" : ""}
-                onClick={() => setCategory(item)}
+                className={!newArrivalsOnly && category === item ? "active" : ""}
+                onClick={() => chooseCategory(item)}
               >
                 {item}
               </button>
@@ -549,7 +892,10 @@ export default function Home() {
               Collection
               <select
                 value={collection}
-                onChange={(e) => setCollection(e.target.value)}
+                onChange={(e) => {
+                  setNewArrivalsOnly(false);
+                  setCollection(e.target.value);
+                }}
               >
                 <option>All collections</option>
                 <option>Everyday</option>
@@ -565,7 +911,10 @@ export default function Home() {
                 max="5500"
                 step="100"
                 value={maxPrice}
-                onChange={(e) => setMaxPrice(Number(e.target.value))}
+                onChange={(e) => {
+                  setNewArrivalsOnly(false);
+                  setMaxPrice(Number(e.target.value));
+                }}
               />
             </label>
             <label>
@@ -580,10 +929,7 @@ export default function Home() {
             </label>
             <button
               onClick={() => {
-                setCategory("All bags");
-                setCollection("All collections");
-                setMaxPrice(5500);
-                setSearch("");
+                showAllProducts();
               }}
             >
               Reset filters
@@ -674,10 +1020,7 @@ export default function Home() {
             <button
               className="secondary-button"
               onClick={() => {
-                setCategory("All bags");
-                setCollection("All collections");
-                setMaxPrice(5500);
-                setSearch("");
+                showAllProducts();
               }}
             >
               Show all bags
@@ -735,12 +1078,7 @@ export default function Home() {
 
       <footer>
         <div className="footer-brand">
-          <a className="brand light logo-brand" href="#top">
-            <img src="/images/logo.png" alt="Trevo" onLoad={() => setLogoLoaded(true)} onError={(event) => { event.currentTarget.style.display = "none"; }} />
-            {!logoLoaded && <span className="brand-fallback">
-              TREVO<small>Effortless style</small>
-            </span>}
-          </a>
+          <TrevoBrand light />
           <p>
             Modern handbags for everyday confidence.
             <br />
@@ -749,11 +1087,11 @@ export default function Home() {
         </div>
         <div>
           <h3>Shop</h3>
-          <a href="#shop">New arrivals</a>
-          <a href="#shop">Luxury collection</a>
-          <a href="#shop">Totes</a>
-          <a href="#shop">Crossbody</a>
-          <a href="#shop">Box bags</a>
+          <button onClick={showNewArrivals}>New arrivals</button>
+          <button onClick={() => { chooseCategory("Luxury Collection"); scrollToShop(); }}>Luxury collection</button>
+          <button onClick={() => { chooseCategory("Tote Bags"); scrollToShop(); }}>Totes</button>
+          <button onClick={() => { chooseCategory("Crossbody"); scrollToShop(); }}>Crossbody</button>
+          <button onClick={() => { chooseCategory("Box Bags"); scrollToShop(); }}>Box bags</button>
         </div>
         <div>
           <h3>Help</h3>
@@ -770,36 +1108,95 @@ export default function Home() {
         </div>
         <div>
           <h3>Follow Trevo</h3>
-          <a
-            href="https://www.instagram.com/trevo_pk/"
-            target="_blank"
-            rel="noreferrer"
-          >
-            Instagram · @trevo_pk
-          </a>
-          <a
-            href="https://web.facebook.com/profile.php?id=61578912687234"
-            target="_blank"
-            rel="noreferrer"
-          >
-            Facebook
-          </a>
+          <div className="social-links">
+            <a
+              href="https://www.instagram.com/trevo_pk/"
+              target="_blank"
+              rel="noreferrer"
+              aria-label="Trevo on Instagram"
+            >
+              <Camera aria-hidden="true" /> Instagram
+            </a>
+            <a
+              href="https://web.facebook.com/profile.php?id=61578912687234"
+              target="_blank"
+              rel="noreferrer"
+              aria-label="Trevo on Facebook"
+            >
+              <span className="facebook-icon" aria-hidden="true">f</span> Facebook
+            </a>
+            <a
+              href="https://www.tiktok.com/@trevo_pk"
+              target="_blank"
+              rel="noreferrer"
+              aria-label="Trevo on TikTok"
+            >
+              <Music2 aria-hidden="true" /> TikTok
+            </a>
+            <a
+              href={`https://wa.me/${WhatsAppNumber}`}
+              target="_blank"
+              rel="noreferrer"
+              aria-label="Contact Trevo on WhatsApp"
+            >
+              <MessageCircle aria-hidden="true" /> WhatsApp
+            </a>
+          </div>
         </div>
         <div className="footer-bottom">
           <span>© 2026 Trevo. All rights reserved.</span>
-          <span>Privacy · Terms · Returns</span>
+          <div className="legal-links" aria-label="Store policies">
+            <button onClick={() => setLegalPanel("privacy")}>Privacy</button>
+            <span aria-hidden="true">·</span>
+            <button onClick={() => setLegalPanel("terms")}>Terms</button>
+            <span aria-hidden="true">·</span>
+            <button onClick={() => setLegalPanel("returns")}>Returns</button>
+          </div>
         </div>
       </footer>
+
+      {legalPanel && (
+        <>
+          <div className="backdrop legal-backdrop" onClick={() => setLegalPanel(null)} />
+          <section
+            className="legal-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="legal-title"
+          >
+            <button
+              className="modal-close"
+              aria-label="Close policy"
+              onClick={() => setLegalPanel(null)}
+            >
+              <X />
+            </button>
+            <p className="eyebrow">Trevo customer care</p>
+            <h2 id="legal-title">{legalContent[legalPanel].title}</h2>
+            <p className="legal-intro">{legalContent[legalPanel].introduction}</p>
+            <ul>
+              {legalContent[legalPanel].points.map((point) => (
+                <li key={point}>{point}</li>
+              ))}
+            </ul>
+            <a
+              className="primary-button legal-whatsapp"
+              href={`https://wa.me/${WhatsAppNumber}`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <MessageCircle size={17} /> Contact on WhatsApp
+            </a>
+          </section>
+        </>
+      )}
 
       {menuOpen && (
         <>
           <div className="backdrop" onClick={closeOverlays} />
           <aside className="mobile-menu" aria-label="Mobile menu">
             <div>
-              <a className="brand logo-brand" href="#top">
-                <img src="/images/logo.png" alt="Trevo" onLoad={() => setLogoLoaded(true)} onError={(event) => { event.currentTarget.style.display = "none"; }} />
-                {!logoLoaded && <span className="brand-fallback">TREVO<small>Effortless style</small></span>}
-              </a>
+              <TrevoBrand />
               <button
                 className="icon-button"
                 aria-label="Close menu"
@@ -820,18 +1217,19 @@ export default function Home() {
                 <button
                   key={item}
                   onClick={() => {
+                    if (item === "New arrivals") showNewArrivals();
                     if (item.toLowerCase().includes("luxury"))
-                      setCategory("Luxury Collection");
+                      chooseCategory("Luxury Collection");
                     if (item.toLowerCase().includes("tote"))
-                      setCategory("Tote Bags");
+                      chooseCategory("Tote Bags");
                     if (item.toLowerCase().includes("crossbody"))
-                      setCategory("Crossbody");
+                      chooseCategory("Crossbody");
                     if (item.toLowerCase().includes("box"))
-                      setCategory("Box Bags");
+                      chooseCategory("Box Bags");
                     setMenuOpen(false);
                     item === "Our story"
                       ? document.getElementById("story")?.scrollIntoView()
-                      : scrollToShop();
+                      : item !== "New arrivals" && scrollToShop();
                   }}
                 >
                   {item}
@@ -925,22 +1323,8 @@ export default function Home() {
                   <div className="delivery-callout">
                     <PackageCheck size={18} />
                     <span>
-                      {subtotal >= 1500 ? (
-                        <>
-                          <b>You unlocked free standard delivery.</b>
-                          <small>
-                            Urgent delivery is always charged separately.
-                          </small>
-                        </>
-                      ) : (
-                        <>
-                          <b>
-                            {formatPKR(1500 - subtotal)} away from free
-                            delivery.
-                          </b>
-                          <small>Standard delivery is Rs. 250.</small>
-                        </>
-                      )}
+                      <b>Flat nationwide delivery</b>
+                      <small>Only Rs. 100 on every order.</small>
                     </span>
                   </div>
                   <div className="total-row">
@@ -954,7 +1338,7 @@ export default function Home() {
                     className="primary-button full"
                     onClick={() => {
                       setCartOpen(false);
-                      setCheckoutOpen(true);
+                      startCheckout();
                     }}
                   >
                     Checkout now <ArrowRight size={17} />
@@ -1062,11 +1446,11 @@ export default function Home() {
       {accountOpen && (
         <>
           <div className="backdrop" onClick={() => setAccountOpen(false)} />
-          <aside className="drawer">
+          <aside className="drawer account-drawer">
             <div className="drawer-header">
               <div>
                 <p>My Trevo</p>
-                <span>Account & order history</span>
+                <span>Customer account</span>
               </div>
               <button
                 className="icon-button"
@@ -1076,33 +1460,162 @@ export default function Home() {
                 <X />
               </button>
             </div>
-            <div className="account-card">
+            <div className="account-scroll">
+              <div className="account-card">
               <div className="account-icon">
                 <UserRound />
               </div>
-              <h2>Welcome to Trevo</h2>
-              <p>
-                Sign in to see your orders, save delivery details and keep your
-                wishlist on every device.
-              </p>
-              <button className="primary-button full">
-                Continue with email
-              </button>
-              <button className="secondary-button full">
-                Create an account
-              </button>
-              <small>Guest checkout is always available.</small>
-            </div>
-            <div className="account-benefits">
-              <p>
-                <Check /> Faster checkout
-              </p>
-              <p>
-                <Check /> Order history and tracking
-              </p>
-              <p>
-                <Check /> Wishlist synced across devices
-              </p>
+              {!authReady ? (
+                <p className="account-loading">Checking your account…</p>
+              ) : accountUser ? (
+                <div className="account-signed-in">
+                  <p className="eyebrow">Signed in</p>
+                  <h2>{accountUser.displayName || authName || "Welcome back"}</h2>
+                  <p>{accountUser.email}</p>
+                  {authNotice && (
+                    <div className={`auth-notice ${authNotice.kind}`} role="status">
+                      {authNotice.text}
+                    </div>
+                  )}
+                  <button
+                    className="secondary-button full"
+                    disabled={authBusy}
+                    onClick={() => void signOutCustomer()}
+                  >
+                    Sign out
+                  </button>
+                  <small>Your name and email will be ready at checkout.</small>
+                </div>
+              ) : accountMode === "welcome" ? (
+                <>
+                  <h2>Welcome to Trevo</h2>
+                  <p>
+                    Sign in for faster checkout and keep your customer details
+                    ready for your next order.
+                  </p>
+                  {authNotice && (
+                    <div className={`auth-notice ${authNotice.kind}`} role="status">
+                      {authNotice.text}
+                    </div>
+                  )}
+                  <button
+                    className="primary-button full"
+                    onClick={() => {
+                      setAccountMode("signin");
+                      setAuthNotice(null);
+                    }}
+                  >
+                    Continue with email
+                  </button>
+                  <button
+                    className="secondary-button full"
+                    onClick={() => {
+                      setAccountMode("register");
+                      setAuthNotice(null);
+                    }}
+                  >
+                    Create an account
+                  </button>
+                  <small>Guest checkout is always available.</small>
+                </>
+              ) : (
+                <form
+                  className="account-form"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void submitCustomerAuth();
+                  }}
+                >
+                  <button
+                    type="button"
+                    className="account-back"
+                    onClick={() => {
+                      setAccountMode("welcome");
+                      setAuthNotice(null);
+                    }}
+                  >
+                    <ChevronLeft /> Back
+                  </button>
+                  <h2>
+                    {accountMode === "register"
+                      ? "Create your account"
+                      : "Sign in to Trevo"}
+                  </h2>
+                  {accountMode === "register" && (
+                    <label>
+                      Full name
+                      <input
+                        required
+                        autoComplete="name"
+                        value={authName}
+                        onChange={(event) => setAuthName(event.target.value)}
+                        placeholder="Your full name"
+                      />
+                    </label>
+                  )}
+                  <label>
+                    Email address
+                    <input
+                      required
+                      type="email"
+                      autoComplete="email"
+                      value={authEmail}
+                      onChange={(event) => setAuthEmail(event.target.value)}
+                      placeholder="name@example.com"
+                    />
+                  </label>
+                  <label>
+                    Password
+                    <input
+                      required
+                      minLength={6}
+                      type="password"
+                      autoComplete={
+                        accountMode === "register"
+                          ? "new-password"
+                          : "current-password"
+                      }
+                      value={authPassword}
+                      onChange={(event) => setAuthPassword(event.target.value)}
+                      placeholder="At least 6 characters"
+                    />
+                  </label>
+                  {authNotice && (
+                    <div className={`auth-notice ${authNotice.kind}`} role="status">
+                      {authNotice.text}
+                    </div>
+                  )}
+                  <button className="primary-button full" disabled={authBusy}>
+                    {authBusy
+                      ? "Please wait…"
+                      : accountMode === "register"
+                        ? "Create account"
+                        : "Sign in"}
+                  </button>
+                  {accountMode === "signin" && (
+                    <button
+                      type="button"
+                      className="forgot-password"
+                      disabled={authBusy}
+                      onClick={() => void resetCustomerPassword()}
+                    >
+                      Forgot password?
+                    </button>
+                  )}
+                </form>
+              )}
+              </div>
+              <div className="account-benefits">
+                <p>
+                  <Check /> Faster checkout
+                </p>
+                <p>
+                  <Check /> Secure email and password sign-in
+                </p>
+                <p>
+                  <Check /> Guest checkout remains available
+                </p>
+              </div>
             </div>
           </aside>
         </>
@@ -1129,43 +1642,34 @@ export default function Home() {
             </button>
             <div className="gallery">
               <img
-                src={selectedImages[activeImage] || selectedProduct.images[0]}
+                src={currentSlide?.image || selectedProduct.images[0]}
                 alt={`${selectedProduct.name} view ${activeImage + 1}`}
               />
-              {selectedImages.length > 1 && (
+              {gallerySlides.length > 1 && (
                 <>
                   <button
                     className="gallery-prev"
                     aria-label="Previous photo"
-                    onClick={() =>
-                      setActiveImage(
-                        (activeImage - 1 + selectedImages.length) %
-                          selectedImages.length,
-                      )
-                    }
+                    onClick={() => moveGallery(-1)}
                   >
                     <ChevronLeft />
                   </button>
                   <button
                     className="gallery-next"
                     aria-label="Next photo"
-                    onClick={() =>
-                      setActiveImage(
-                        (activeImage + 1) % selectedImages.length,
-                      )
-                    }
+                    onClick={() => moveGallery(1)}
                   >
                     <ChevronRight />
                   </button>
                   <div className="thumbs">
-                    {selectedImages.map((image, index) => (
+                    {gallerySlides.map((slide, index) => (
                       <button
-                        key={image}
+                        key={`${slide.variantId}-${index}-${slide.image}`}
                         className={index === activeImage ? "active" : ""}
                         aria-label={`View image ${index + 1}`}
-                        onClick={() => setActiveImage(index)}
+                        onClick={() => { setActiveImage(index); setSelectedColor(slide.color); }}
                       >
-                        <img src={image} alt="" />
+                        <img src={slide.image} alt="" />
                       </button>
                     ))}
                   </div>
@@ -1182,6 +1686,9 @@ export default function Home() {
                 )}
               </div>
               <p className="detail-copy">{selectedProduct.description}</p>
+              <p className="colour-disclaimer">
+                Product colour may vary slightly from the original product online.
+              </p>
               <div className="detail-meta">
                 <span>
                   <b>Material</b>
@@ -1212,7 +1719,7 @@ export default function Home() {
                       className={selectedColor === variant.color ? "active" : ""}
                       title={variant.color}
                       aria-label={variant.color}
-                      onClick={() => { setSelectedColor(variant.color); setActiveImage(0); }}
+                      onClick={() => chooseVariant(variant)}
                       style={{ background: variant.colorHex }}
                     />
                   ))}
@@ -1232,8 +1739,8 @@ export default function Home() {
                 disabled={selectedStock === 0}
                 onClick={() => {
                   addToCart(selectedProduct, selectedColor, false);
+                  startCheckout(selectedProduct);
                   setSelectedProduct(null);
-                  setCheckoutOpen(true);
                 }}
               >
                 Buy now
@@ -1405,29 +1912,10 @@ export default function Home() {
                           }
                         />
                         <span>
-                          <b>Standard delivery</b>
-                          <small>3–5 working days · Free above Rs. 1,500</small>
+                          <b>Flat nationwide delivery</b>
+                          <small>Tracked delivery across Pakistan</small>
                         </span>
-                        <strong>{subtotal >= 1500 ? "FREE" : "Rs. 250"}</strong>
-                      </label>
-                      <label
-                        className={`choice-card ${checkout.delivery === "urgent" ? "selected" : ""}`}
-                      >
-                        <input
-                          type="radio"
-                          name="delivery"
-                          checked={checkout.delivery === "urgent"}
-                          onChange={() =>
-                            setCheckout({ ...checkout, delivery: "urgent" })
-                          }
-                        />
-                        <span>
-                          <b>Urgent delivery</b>
-                          <small>
-                            1–2 working days · Never included in free shipping
-                          </small>
-                        </span>
-                        <strong>Rs. 500</strong>
+                        <strong>Rs. 100</strong>
                       </label>
                     </fieldset>
                     <fieldset>
@@ -1464,9 +1952,7 @@ export default function Home() {
                         />
                         <span>
                           <b>Cash on delivery</b>
-                          <small>
-                            Rs. 200 security advance required before dispatch
-                          </small>
+                          <small>No advance payment required</small>
                         </span>
                         <strong>COD</strong>
                       </label>
@@ -1499,7 +1985,7 @@ export default function Home() {
                       </p>
                       <p>
                         <span>Delivery</span>
-                        <b>{shipping === 0 ? "Free" : formatPKR(shipping)}</b>
+                        <b>{formatPKR(shipping)}</b>
                       </p>
                       <p>
                         <span>Total</span>
@@ -1517,18 +2003,6 @@ export default function Home() {
                         Get bank-transfer instructions on WhatsApp
                       </a>
                     </div>
-                    {checkout.payment === "cod" && (
-                      <div className="advance-note">
-                        <ShieldCheck />
-                        <span>
-                          <b>Advance required: Rs. 200</b>
-                          <small>
-                            Pay to the same JazzCash/EasyPaisa number before
-                            dispatch. It is tracked against your order.
-                          </small>
-                        </span>
-                      </div>
-                    )}
                     {checkoutError && <p className="checkout-error" role="alert">{checkoutError}</p>}
                     <button
                       form="checkout-form"

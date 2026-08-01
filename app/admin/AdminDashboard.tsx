@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft, BadgeDollarSign, CheckCircle2, CircleDollarSign, Edit3,
-  ExternalLink, LayoutDashboard, LogOut, Menu, MessageCircle, Package,
+  Download, ExternalLink, LayoutDashboard, LogOut, Menu, MessageCircle, Package,
   Plus, Search, ShoppingBag, Trash2, Users, X,
 } from "lucide-react";
 import {
@@ -22,10 +22,24 @@ type AdminOrder = {
   total: number;
   items: number;
   status: "New" | "Confirmed" | "Packed" | "Shipped" | "Delivered" | "Cancelled";
-  payment: "Paid" | "Advance pending" | "COD advance due" | "Refunded";
+  payment: "Paid" | "Advance pending" | "Cash on delivery" | "Refunded";
   paymentStatus: string;
   advanceAmount: number;
   date: string;
+};
+
+type AdminCustomer = {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  city: string;
+  registeredAccount: boolean;
+  emailVerified: boolean;
+  totalOrders: number;
+  totalSpent: number;
+  accountCreatedAt: string;
+  lastLoginAt: string;
 };
 
 type VariantDraft = { id?: string; color: string; colorHex: string; stock: string; images: string[] };
@@ -59,7 +73,7 @@ function mapOrder(order: Record<string, unknown>): AdminOrder {
     total: Number(order.total || 0),
     items: Array.isArray(order.items) ? order.items.reduce((sum: number, item: { quantity?: number }) => sum + Number(item.quantity || 0), 0) : 0,
     status: statusLabel[String(order.status)] || "New",
-    payment: paymentStatus === "paid" ? "Paid" : paymentStatus === "refunded" ? "Refunded" : paymentStatus === "cod_advance_required" ? "COD advance due" : "Advance pending",
+    payment: paymentStatus === "paid" ? "Paid" : paymentStatus === "refunded" ? "Refunded" : paymentStatus === "cod" || paymentStatus === "cod_advance_required" ? "Cash on delivery" : "Advance pending",
     paymentStatus, advanceAmount: Number(order.advanceAmount || 0),
     date: order.createdAt ? new Date(String(order.createdAt)).toLocaleString("en-PK", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }) : "",
   };
@@ -74,9 +88,17 @@ function draftFromProduct(product: Product): ProductDraft {
   };
 }
 
+function csvCell(value: string | number | boolean | null | undefined) {
+  let text = value == null ? "" : String(value);
+  // Stop spreadsheet applications from treating product text as a formula.
+  if (/^[=+\-@]/.test(text)) text = `'${text}`;
+  return `"${text.replaceAll('"', '""')}"`;
+}
+
 export default function AdminDashboard() {
   const [tab, setTab] = useState<Tab>("Overview");
   const [orders, setOrders] = useState<AdminOrder[]>([]);
+  const [customers, setCustomers] = useState<AdminCustomer[]>([]);
   const [storeProducts, setStoreProducts] = useState<Product[]>(catalogProducts);
   const [query, setQuery] = useState("");
   const [sideOpen, setSideOpen] = useState(false);
@@ -90,11 +112,17 @@ export default function AdminDashboard() {
 
   const loadData = async () => {
     try {
-      const [ordersResponse, productsResponse] = await Promise.all([fetch("/api/orders"), fetch("/api/products")]);
-      if (ordersResponse.status === 401) { window.location.href = "/admin/login"; return; }
+      const [ordersResponse, productsResponse, customersResponse] = await Promise.all([
+        fetch("/api/orders"),
+        fetch("/api/products"),
+        fetch("/api/customers"),
+      ]);
+      if (ordersResponse.status === 401 || customersResponse.status === 401) { window.location.href = "/admin/login"; return; }
       const orderData = await ordersResponse.json();
       const productData = await productsResponse.json();
+      const customerData = await customersResponse.json();
       if (ordersResponse.ok) setOrders((orderData.orders || []).map(mapOrder));
+      if (customersResponse.ok) setCustomers(customerData.customers || []);
       if (productsResponse.ok) {
         const live = (productData.products || []).map((product: Product) => normalizeProduct(product));
         const hidden = new Set<string>(productData.inactiveIds || []);
@@ -109,10 +137,12 @@ export default function AdminDashboard() {
 
   const matchingProducts = useMemo(() => storeProducts.filter((product) => `${product.name} ${product.sku}`.toLowerCase().includes(query.toLowerCase())), [storeProducts, query]);
   const matchingOrders = useMemo(() => orders.filter((order) => `${order.orderNumber} ${order.customer} ${order.city}`.toLowerCase().includes(query.toLowerCase())), [orders, query]);
+  const matchingCustomers = useMemo(() => customers.filter((customer) => `${customer.name} ${customer.email} ${customer.phone} ${customer.city}`.toLowerCase().includes(query.toLowerCase())), [customers, query]);
   const lowStock = storeProducts.filter((product) => product.stock <= 5);
   const paidRevenue = orders.filter((order) => order.payment === "Paid").reduce((sum, order) => sum + order.total, 0);
-  const pendingAdvance = orders.filter((order) => order.payment !== "Paid").reduce((sum, order) => sum + order.advanceAmount, 0);
-  const customerCount = new Set(orders.map((order) => order.email || order.phone)).size;
+  const pendingAdvanceOrders = orders.filter((order) => order.paymentStatus === "pending_advance");
+  const pendingAdvance = pendingAdvanceOrders.reduce((sum, order) => sum + order.advanceAmount, 0);
+  const customerCount = customers.length;
 
   const patchOrder = async (order: AdminOrder, update: Record<string, string>) => {
     const response = await fetch("/api/orders", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: order.dbId, ...update }) });
@@ -147,7 +177,7 @@ export default function AdminDashboard() {
       images: variant.images.map((image) => image.trim()).filter(Boolean),
     }));
     const uniqueImages = variants.flatMap((variant) => variant.images).filter((image, index, all) => all.indexOf(image) === index);
-    if (uniqueImages.length < 4) { showToast("Add at least 4 product images across the variants."); return; }
+    if (!uniqueImages.length) { showToast("Add at least one product image."); return; }
     if (variants.some((variant) => !variant.color || !variant.images.length)) { showToast("Every variant needs a colour and at least one image."); return; }
     setSaving(true);
     try {
@@ -176,6 +206,40 @@ export default function AdminDashboard() {
     else showToast("Product could not be deleted.");
   };
 
+  const downloadProductsCsv = () => {
+    const headings = [
+      "Product ID", "SKU", "Product name", "Category", "Collection",
+      "Price (PKR)", "Compare-at price (PKR)", "Status", "Total stock",
+      "Sizes", "Description", "Material", "Variant number", "Variant ID",
+      "Colour name", "Colour hex", "Colour stock", "Image 1", "Image 2",
+      "Image 3", "Image 4", "Image 5", "Image 6", "All product image URLs",
+    ];
+    const rows = storeProducts.flatMap((product) =>
+      productVariants(product).map((variant, variantIndex) => {
+        const images = [...variant.images, "", "", "", "", "", ""].slice(0, 6);
+        return [
+          product.id, product.sku, product.name, product.category,
+          product.collection, product.price, product.compareAt ?? "",
+          product.active === false ? "Inactive" : "Active", product.stock,
+          product.sizes.join(" | "), product.description, product.material,
+          variantIndex + 1, variant.id, variant.color, variant.colorHex,
+          variant.stock, ...images, product.images.join(" | "),
+        ];
+      }),
+    );
+
+    const csv = `\uFEFF${[headings, ...rows].map((row) => row.map(csvCell).join(",")).join("\r\n")}`;
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `trevo-products-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    showToast(`Downloaded ${storeProducts.length} products with colour variants and image URLs.`);
+  };
+
   const logout = async () => { await fetch("/api/admin/session", { method: "DELETE" }); window.location.href = "/admin/login"; };
   const menu: { tab: Tab; icon: React.ReactNode }[] = [
     { tab: "Overview", icon: <LayoutDashboard /> }, { tab: "Products", icon: <Package /> },
@@ -199,16 +263,16 @@ export default function AdminDashboard() {
           <section className="metric-grid">
             <article><div className="metric-icon sage"><BadgeDollarSign /></div><p>Paid revenue</p><h2>{formatPKR(paidRevenue)}</h2><span>Verified paid orders</span></article>
             <article><div className="metric-icon rose"><ShoppingBag /></div><p>Orders</p><h2>{orders.length}</h2><span>{orders.filter((order) => order.status === "New").length} new</span></article>
-            <article><div className="metric-icon gold"><CircleDollarSign /></div><p>Pending advance</p><h2>{formatPKR(pendingAdvance)}</h2><span>{orders.filter((order) => order.payment !== "Paid").length} need action</span></article>
-            <article><div className="metric-icon blue"><Users /></div><p>Customers</p><h2>{customerCount}</h2><span>Unique order contacts</span></article>
+            <article><div className="metric-icon gold"><CircleDollarSign /></div><p>Pending advance</p><h2>{formatPKR(pendingAdvance)}</h2><span>{pendingAdvanceOrders.length} need action</span></article>
+            <article><div className="metric-icon blue"><Users /></div><p>Customers</p><h2>{customerCount}</h2><span>Accounts and order contacts</span></article>
           </section>
           <div className="admin-split"><section className="admin-card recent-orders"><div className="card-title"><div><h2>Recent orders</h2><p>Newest Firestore orders</p></div><button onClick={() => setTab("Orders")}>View all</button></div><OrdersTable orders={orders.slice(0, 5)} onStatus={changeStatus} onPaid={markPaid} /></section>
           <section className="admin-card low-stock-card"><div className="card-title"><div><h2>Low stock alerts</h2><p>Variant stock combined</p></div><button onClick={() => setTab("Products")}>View all</button></div>{lowStock.map((product) => <div className="stock-row" key={product.id}><img src={product.images[0]} alt="" /><span><b>{product.name}</b><small>{product.sku}</small></span><strong>{product.stock} left</strong><button onClick={() => openEdit(product)}><Edit3 /></button></div>)}{!lowStock.length && <div className="admin-empty"><CheckCircle2 /><p>No low-stock products.</p></div>}</section></div>
         </div>}
-        {tab === "Products" && <div className="admin-content"><section className="page-title"><div><h1>Products</h1><p>{storeProducts.length} products · {storeProducts.reduce((sum, product) => sum + product.stock, 0)} total variant units</p></div><button className="solid-admin-button" onClick={openNew}><Plus /> Add product</button></section><section className="admin-card product-table-card"><div className="table-wrap"><table className="admin-table"><thead><tr><th>Product</th><th>Collection</th><th>Variants</th><th>Price</th><th>Inventory</th><th /></tr></thead><tbody>{matchingProducts.map((product) => <tr key={product.id}><td><div className="table-product"><img src={product.images[0]} alt="" /><span><b>{product.name}</b><small>{product.sku}</small></span></div></td><td>{product.collection}</td><td>{productVariants(product).map((variant) => <span key={variant.id} title={variant.color} style={{ display: "inline-block", width: 18, height: 18, borderRadius: "50%", background: variant.colorHex, border: "1px solid #bbb", marginRight: 5 }} />)}</td><td>{formatPKR(product.price)}</td><td><b>{product.stock}</b> units</td><td><button className="table-icon" title="Edit product" onClick={() => openEdit(product)}><Edit3 /></button><button className="table-icon danger-icon" title="Delete product" onClick={() => deleteProduct(product)}><Trash2 /></button></td></tr>)}</tbody></table></div></section></div>}
+        {tab === "Products" && <div className="admin-content"><section className="page-title"><div><h1>Products</h1><p>{storeProducts.length} products · {storeProducts.reduce((sum, product) => sum + product.stock, 0)} total variant units</p></div><div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}><button className="outline-admin-button" onClick={downloadProductsCsv} disabled={!storeProducts.length}><Download /> Download products CSV</button><button className="solid-admin-button" onClick={openNew}><Plus /> Add product</button></div></section><section className="admin-card product-table-card"><div className="table-wrap"><table className="admin-table"><thead><tr><th>Product</th><th>Collection</th><th>Variants</th><th>Price</th><th>Inventory</th><th /></tr></thead><tbody>{matchingProducts.map((product) => <tr key={product.id}><td><div className="table-product"><img src={product.images[0]} alt="" /><span><b>{product.name}</b><small>{product.sku}</small></span></div></td><td>{product.collection}</td><td>{productVariants(product).map((variant) => <span key={variant.id} title={variant.color} style={{ display: "inline-block", width: 18, height: 18, borderRadius: "50%", background: variant.colorHex, border: "1px solid #bbb", marginRight: 5 }} />)}</td><td>{formatPKR(product.price)}</td><td><b>{product.stock}</b> units</td><td><button className="table-icon" title="Edit product" onClick={() => openEdit(product)}><Edit3 /></button><button className="table-icon danger-icon" title="Delete product" onClick={() => deleteProduct(product)}><Trash2 /></button></td></tr>)}</tbody></table></div></section></div>}
         {tab === "Orders" && <div className="admin-content"><section className="page-title"><div><h1>Orders</h1><p>{orders.length} real customer orders from Firestore.</p></div></section><section className="admin-card recent-orders"><OrdersTable orders={matchingOrders} onStatus={changeStatus} onPaid={markPaid} /></section></div>}
-        {tab === "Customers" && <div className="admin-content"><section className="page-title"><div><h1>Customers</h1><p>Generated from live orders.</p></div></section><section className="customer-grid">{matchingOrders.map((order) => <article className="admin-card customer-card" key={order.dbId}><div className="customer-avatar">{order.customer.split(" ").map((name) => name[0]).join("").slice(0, 2)}</div><h2>{order.customer}</h2><p>{order.city}, Pakistan</p><div><span><b>{order.items}</b>Items</span><span><b>{formatPKR(order.total)}</b>Order</span></div><a href={`https://wa.me/${order.phone}`} target="_blank" rel="noreferrer"><MessageCircle /> WhatsApp customer</a></article>)}</section></div>}
-        {tab === "Payments" && <div className="admin-content"><section className="page-title"><div><h1>Payments</h1><p>Advance and payment status from live orders.</p></div></section><section className="metric-grid compact"><article><p>Paid revenue</p><h2>{formatPKR(paidRevenue)}</h2></article><article><p>Pending advance</p><h2>{formatPKR(pendingAdvance)}</h2></article><article><p>Paid orders</p><h2>{orders.filter((order) => order.payment === "Paid").length}</h2></article><article><p>Pending orders</p><h2>{orders.filter((order) => order.payment !== "Paid").length}</h2></article></section><section className="admin-card recent-orders"><OrdersTable orders={matchingOrders} onStatus={changeStatus} onPaid={markPaid} paymentOnly /></section></div>}
+        {tab === "Customers" && <div className="admin-content"><section className="page-title"><div><h1>Customers</h1><p>Live sign-ups and checkout customers from Firestore.</p></div></section>{matchingCustomers.length ? <section className="customer-grid">{matchingCustomers.map((customer) => <article className="admin-card customer-card" key={customer.id}><div className="customer-avatar">{customer.name.split(" ").map((name) => name[0]).join("").slice(0, 2).toUpperCase()}</div><h2>{customer.name}</h2><p>{customer.email || customer.city || "Trevo customer"}</p>{customer.registeredAccount && <span className="customer-account-badge">Signed-in account{customer.emailVerified ? " · Verified" : ""}</span>}<div><span><b>{customer.totalOrders}</b>Orders</span><span><b>{formatPKR(customer.totalSpent)}</b>Spent</span></div>{customer.phone ? <a href={`https://wa.me/${customer.phone.replace(/\D/g, "").replace(/^0/, "92")}`} target="_blank" rel="noreferrer"><MessageCircle /> WhatsApp customer</a> : <a href={`mailto:${customer.email}`}><MessageCircle /> Email customer</a>}<small className="customer-last-seen">{customer.lastLoginAt ? `Last sign-in ${new Date(customer.lastLoginAt).toLocaleString("en-PK", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}` : customer.city ? `${customer.city}, Pakistan` : "No sign-in recorded"}</small></article>)}</section> : <section className="admin-card empty-state"><Users /><h3>No customers yet</h3><p>New sign-ups and checkout customers will appear here automatically.</p></section>}</div>}
+        {tab === "Payments" && <div className="admin-content"><section className="page-title"><div><h1>Payments</h1><p>Payment status from live orders.</p></div></section><section className="metric-grid compact"><article><p>Paid revenue</p><h2>{formatPKR(paidRevenue)}</h2></article><article><p>Pending advance</p><h2>{formatPKR(pendingAdvance)}</h2></article><article><p>Paid orders</p><h2>{orders.filter((order) => order.payment === "Paid").length}</h2></article><article><p>COD orders</p><h2>{orders.filter((order) => order.paymentStatus === "cod").length}</h2></article></section><section className="admin-card recent-orders"><OrdersTable orders={matchingOrders} onStatus={changeStatus} onPaid={markPaid} paymentOnly /></section></div>}
       </>}
     </section>
     {editorOpen && <ProductEditor draft={draft} setDraft={setDraft} updateVariant={updateVariant} updateImage={updateImage} onSubmit={saveProduct} onClose={() => setEditorOpen(false)} saving={saving} />}
@@ -229,7 +293,8 @@ function ProductEditor({ draft, setDraft, updateVariant, updateImage, onSubmit, 
     <label>Material<input value={draft.material} onChange={(e) => setDraft((current) => ({ ...current, material: e.target.value }))} /></label>
     <label>Description<textarea required minLength={10} value={draft.description} onChange={(e) => setDraft((current) => ({ ...current, description: e.target.value }))} /></label>
     <div className="variant-editor-head"><b>Colour variants</b><button type="button" onClick={() => setDraft((current) => ({ ...current, variants: [...current.variants, newVariant()] }))}><Plus /> Add variant</button></div>
-    {draft.variants.map((variant, variantIndex) => <section className="variant-editor" key={variant.id || variantIndex}><div className="variant-editor-head"><b>Variant {variantIndex + 1}</b>{draft.variants.length > 1 && <button type="button" onClick={() => setDraft((current) => ({ ...current, variants: current.variants.filter((_, index) => index !== variantIndex) }))}><Trash2 /> Remove</button>}</div><div><label>Colour name<input required placeholder="Black" value={variant.color} onChange={(e) => updateVariant(variantIndex, { color: e.target.value })} /></label><label>Colour swatch<input required type="color" value={variant.colorHex} onChange={(e) => updateVariant(variantIndex, { colorHex: e.target.value })} /></label><label>Stock<input required min="0" type="number" value={variant.stock} onChange={(e) => updateVariant(variantIndex, { stock: e.target.value })} /></label></div><p>Image URLs for this colour (1–6). Add at least 4 unique images across the product.</p><div className="variant-image-grid">{variant.images.map((image, imageIndex) => <label key={imageIndex}>Image {imageIndex + 1}<input type="url" placeholder="https://raw.githubusercontent.com/..." value={image} onChange={(e) => updateImage(variantIndex, imageIndex, e.target.value)} /></label>)}</div></section>)}
+    {draft.variants.map((variant, variantIndex) => <section className="variant-editor" key={variant.id || variantIndex}><div className="variant-editor-head"><b>Colour {variantIndex + 1} of {draft.variants.length}</b>{draft.variants.length > 1 && <button type="button" onClick={() => setDraft((current) => ({ ...current, variants: current.variants.filter((_, index) => index !== variantIndex) }))}><Trash2 /> Remove</button>}</div><div><label>Colour name<input required placeholder="Black" value={variant.color} onChange={(e) => updateVariant(variantIndex, { color: e.target.value })} /></label><label>Colour swatch<input required type="color" value={variant.colorHex} onChange={(e) => updateVariant(variantIndex, { colorHex: e.target.value })} /></label><label>Stock for this colour<input required min="0" type="number" value={variant.stock} onChange={(e) => updateVariant(variantIndex, { stock: e.target.value })} /></label></div><p>Paste 1–6 image URLs for this colour. One image is enough to save.</p><div className="variant-image-grid">{variant.images.map((image, imageIndex) => <label key={imageIndex}>Image {imageIndex + 1}<input type="url" placeholder="https://raw.githubusercontent.com/..." value={image} onChange={(e) => updateImage(variantIndex, imageIndex, e.target.value)} /></label>)}</div></section>)}
+    <button className="outline-admin-button full" type="button" onClick={() => setDraft((current) => ({ ...current, variants: [...current.variants, newVariant()] }))}><Plus /> Add another colour (currently {draft.variants.length})</button>
     <button className="solid-admin-button full" disabled={saving}>{saving ? "Saving…" : draft.id ? "Save product changes" : "Add product to store"}</button>
   </form></section></>;
 }
