@@ -1,6 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import type { User } from "firebase/auth";
+import {
+  createUserWithEmailAndPassword,
+  onAuthStateChanged,
+  sendPasswordResetEmail,
+  signInWithEmailAndPassword,
+  signOut,
+  updateProfile,
+} from "firebase/auth";
 import {
   ArrowRight,
   Camera,
@@ -32,9 +41,12 @@ import {
   type ProductVariant,
 } from "../lib/catalog";
 import { trackMetaEvent } from "../lib/meta-pixel";
+import { firebaseAuth } from "../lib/firebase/client";
 
 type CartLine = { product: Product; quantity: number; color: string };
 type LegalPanel = "privacy" | "terms" | "returns";
+type AccountMode = "welcome" | "signin" | "register";
+type AuthNotice = { kind: "success" | "error"; text: string };
 type CheckoutFields = {
   name: string;
   email: string;
@@ -58,6 +70,34 @@ const initialCheckout: CheckoutFields = {
 };
 
 const WhatsAppNumber = "923007041451";
+
+function customerAuthMessage(error: unknown) {
+  const code =
+    typeof error === "object" && error && "code" in error
+      ? String(error.code)
+      : "";
+
+  if (
+    code.includes("invalid-credential") ||
+    code.includes("wrong-password") ||
+    code.includes("user-not-found")
+  ) {
+    return "The email or password is incorrect.";
+  }
+  if (code.includes("email-already-in-use")) {
+    return "An account already exists for this email. Please sign in instead.";
+  }
+  if (code.includes("weak-password")) {
+    return "Please choose a password with at least 6 characters.";
+  }
+  if (code.includes("invalid-email")) {
+    return "Please enter a valid email address.";
+  }
+  if (code.includes("too-many-requests")) {
+    return "Too many attempts. Please wait a little and try again.";
+  }
+  return "We could not complete that request. Please try again.";
+}
 
 const legalContent: Record<
   LegalPanel,
@@ -126,6 +166,14 @@ export default function Home() {
   const [legalPanel, setLegalPanel] = useState<LegalPanel | null>(null);
   const [storeProducts, setStoreProducts] =
     useState<Product[]>(catalogProducts);
+  const [accountMode, setAccountMode] = useState<AccountMode>("welcome");
+  const [accountUser, setAccountUser] = useState<User | null>(null);
+  const [authReady, setAuthReady] = useState(false);
+  const [authName, setAuthName] = useState("");
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authBusy, setAuthBusy] = useState(false);
+  const [authNotice, setAuthNotice] = useState<AuthNotice | null>(null);
 
   useEffect(() => {
     try {
@@ -153,6 +201,25 @@ export default function Home() {
         ]);
       })
       .catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    if (!firebaseAuth) {
+      setAuthReady(true);
+      return;
+    }
+
+    return onAuthStateChanged(firebaseAuth, (user) => {
+      setAccountUser(user);
+      setAuthReady(true);
+      if (user) {
+        setCheckout((current) => ({
+          ...current,
+          name: current.name || user.displayName || "",
+          email: current.email || user.email || "",
+        }));
+      }
+    });
   }, []);
 
   useEffect(() => {
@@ -335,6 +402,87 @@ export default function Home() {
         ? current.filter((item) => item !== id)
         : [...current, id],
     );
+  };
+
+  const submitCustomerAuth = async () => {
+    if (!firebaseAuth) {
+      setAuthNotice({
+        kind: "error",
+        text: "Customer sign-in is not configured yet. Please check the Firebase environment variables.",
+      });
+      return;
+    }
+
+    setAuthBusy(true);
+    setAuthNotice(null);
+    try {
+      if (accountMode === "register") {
+        const credential = await createUserWithEmailAndPassword(
+          firebaseAuth,
+          authEmail.trim(),
+          authPassword,
+        );
+        const customerName = authName.trim();
+        if (customerName) {
+          await updateProfile(credential.user, { displayName: customerName });
+        }
+        setAuthNotice({
+          kind: "success",
+          text: "Your Trevo account is ready.",
+        });
+      } else {
+        await signInWithEmailAndPassword(
+          firebaseAuth,
+          authEmail.trim(),
+          authPassword,
+        );
+        setAuthNotice({
+          kind: "success",
+          text: "You are now signed in.",
+        });
+      }
+      setAuthPassword("");
+    } catch (error) {
+      setAuthNotice({ kind: "error", text: customerAuthMessage(error) });
+    } finally {
+      setAuthBusy(false);
+    }
+  };
+
+  const resetCustomerPassword = async () => {
+    if (!firebaseAuth || !authEmail.trim()) {
+      setAuthNotice({
+        kind: "error",
+        text: "Enter your email address first, then select Forgot password.",
+      });
+      return;
+    }
+
+    setAuthBusy(true);
+    setAuthNotice(null);
+    try {
+      await sendPasswordResetEmail(firebaseAuth, authEmail.trim());
+      setAuthNotice({
+        kind: "success",
+        text: "Password reset instructions have been sent to your email.",
+      });
+    } catch (error) {
+      setAuthNotice({ kind: "error", text: customerAuthMessage(error) });
+    } finally {
+      setAuthBusy(false);
+    }
+  };
+
+  const signOutCustomer = async () => {
+    if (!firebaseAuth) return;
+    setAuthBusy(true);
+    try {
+      await signOut(firebaseAuth);
+      setAccountMode("welcome");
+      setAuthNotice({ kind: "success", text: "You have been signed out." });
+    } finally {
+      setAuthBusy(false);
+    }
   };
 
   const updateQuantity = (id: string, color: string, amount: number) => {
@@ -1256,7 +1404,7 @@ export default function Home() {
             <div className="drawer-header">
               <div>
                 <p>My Trevo</p>
-                <span>Account & order history</span>
+                <span>Customer account</span>
               </div>
               <button
                 className="icon-button"
@@ -1270,28 +1418,155 @@ export default function Home() {
               <div className="account-icon">
                 <UserRound />
               </div>
-              <h2>Welcome to Trevo</h2>
-              <p>
-                Sign in to see your orders, save delivery details and keep your
-                wishlist on every device.
-              </p>
-              <button className="primary-button full">
-                Continue with email
-              </button>
-              <button className="secondary-button full">
-                Create an account
-              </button>
-              <small>Guest checkout is always available.</small>
+              {!authReady ? (
+                <p className="account-loading">Checking your account…</p>
+              ) : accountUser ? (
+                <div className="account-signed-in">
+                  <p className="eyebrow">Signed in</p>
+                  <h2>{accountUser.displayName || authName || "Welcome back"}</h2>
+                  <p>{accountUser.email}</p>
+                  {authNotice && (
+                    <div className={`auth-notice ${authNotice.kind}`} role="status">
+                      {authNotice.text}
+                    </div>
+                  )}
+                  <button
+                    className="secondary-button full"
+                    disabled={authBusy}
+                    onClick={() => void signOutCustomer()}
+                  >
+                    Sign out
+                  </button>
+                  <small>Your name and email will be ready at checkout.</small>
+                </div>
+              ) : accountMode === "welcome" ? (
+                <>
+                  <h2>Welcome to Trevo</h2>
+                  <p>
+                    Sign in for faster checkout and keep your customer details
+                    ready for your next order.
+                  </p>
+                  {authNotice && (
+                    <div className={`auth-notice ${authNotice.kind}`} role="status">
+                      {authNotice.text}
+                    </div>
+                  )}
+                  <button
+                    className="primary-button full"
+                    onClick={() => {
+                      setAccountMode("signin");
+                      setAuthNotice(null);
+                    }}
+                  >
+                    Continue with email
+                  </button>
+                  <button
+                    className="secondary-button full"
+                    onClick={() => {
+                      setAccountMode("register");
+                      setAuthNotice(null);
+                    }}
+                  >
+                    Create an account
+                  </button>
+                  <small>Guest checkout is always available.</small>
+                </>
+              ) : (
+                <form
+                  className="account-form"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void submitCustomerAuth();
+                  }}
+                >
+                  <button
+                    type="button"
+                    className="account-back"
+                    onClick={() => {
+                      setAccountMode("welcome");
+                      setAuthNotice(null);
+                    }}
+                  >
+                    <ChevronLeft /> Back
+                  </button>
+                  <h2>
+                    {accountMode === "register"
+                      ? "Create your account"
+                      : "Sign in to Trevo"}
+                  </h2>
+                  {accountMode === "register" && (
+                    <label>
+                      Full name
+                      <input
+                        required
+                        autoComplete="name"
+                        value={authName}
+                        onChange={(event) => setAuthName(event.target.value)}
+                        placeholder="Your full name"
+                      />
+                    </label>
+                  )}
+                  <label>
+                    Email address
+                    <input
+                      required
+                      type="email"
+                      autoComplete="email"
+                      value={authEmail}
+                      onChange={(event) => setAuthEmail(event.target.value)}
+                      placeholder="name@example.com"
+                    />
+                  </label>
+                  <label>
+                    Password
+                    <input
+                      required
+                      minLength={6}
+                      type="password"
+                      autoComplete={
+                        accountMode === "register"
+                          ? "new-password"
+                          : "current-password"
+                      }
+                      value={authPassword}
+                      onChange={(event) => setAuthPassword(event.target.value)}
+                      placeholder="At least 6 characters"
+                    />
+                  </label>
+                  {authNotice && (
+                    <div className={`auth-notice ${authNotice.kind}`} role="status">
+                      {authNotice.text}
+                    </div>
+                  )}
+                  <button className="primary-button full" disabled={authBusy}>
+                    {authBusy
+                      ? "Please wait…"
+                      : accountMode === "register"
+                        ? "Create account"
+                        : "Sign in"}
+                  </button>
+                  {accountMode === "signin" && (
+                    <button
+                      type="button"
+                      className="forgot-password"
+                      disabled={authBusy}
+                      onClick={() => void resetCustomerPassword()}
+                    >
+                      Forgot password?
+                    </button>
+                  )}
+                </form>
+              )}
             </div>
             <div className="account-benefits">
               <p>
                 <Check /> Faster checkout
               </p>
               <p>
-                <Check /> Order history and tracking
+                <Check /> Secure email and password sign-in
               </p>
               <p>
-                <Check /> Wishlist synced across devices
+                <Check /> Guest checkout remains available
               </p>
             </div>
           </aside>
