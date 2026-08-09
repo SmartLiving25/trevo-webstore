@@ -19,12 +19,22 @@ export function OptimizedProductImage({
   src,
   alt = "",
   onError,
+  loading = "lazy",
+  decoding = "async",
   ...props
 }: OptimizedProductImageProps) {
   const webpSrc = webpVersion(src);
 
   if (webpSrc === src) {
-    return <img src={src} alt={alt} {...props} />;
+    return (
+      <img
+        src={src}
+        alt={alt}
+        loading={loading}
+        decoding={decoding}
+        {...props}
+      />
+    );
   }
 
   return (
@@ -33,6 +43,8 @@ export function OptimizedProductImage({
       <img
         src={src}
         alt={alt}
+        loading={loading}
+        decoding={decoding}
         onError={(event) => {
           const source = event.currentTarget.parentElement?.querySelector("source");
           if (source) {

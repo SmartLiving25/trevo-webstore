@@ -44,7 +44,9 @@ export default function RootLayout({
       <head>
         <link
           rel="preload"
-          href="/images/trevo-hero.webp"
+          href="/images/trevo-hero-720.webp"
+          imageSrcSet="/images/trevo-hero-720.webp 720w, /images/trevo-hero-1200.webp 1200w, /images/trevo-hero.webp 1586w"
+          imageSizes="100vw"
           as="image"
           type="image/webp"
           fetchPriority="high"
