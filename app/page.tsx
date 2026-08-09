@@ -142,7 +142,7 @@ function TrevoBrand({ light = false }: { light?: boolean }) {
   return (
     <a
       className={`brand brand-lockup ${light ? "light" : ""}`}
-      href="#top"
+      href="/"
       aria-label="Trevo home"
     >
       <span className="brand-mark" aria-hidden="true">
@@ -173,7 +173,9 @@ async function syncCustomerAccount(
   }
 }
 
-export default function Home() {
+export type StorefrontPage = "home" | "bags" | "new-arrivals";
+
+export function Storefront({ page = "home" }: { page?: StorefrontPage }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
   const [wishlistOpen, setWishlistOpen] = useState(false);
@@ -187,7 +189,7 @@ export default function Home() {
   const [category, setCategory] = useState("All bags");
   const [collection, setCollection] = useState("All collections");
   const [maxPrice, setMaxPrice] = useState(5000);
-  const [newArrivalsOnly, setNewArrivalsOnly] = useState(false);
+  const [newArrivalsOnly, setNewArrivalsOnly] = useState(page === "new-arrivals");
   const [cart, setCart] = useState<CartLine[]>([]);
   const [wishlist, setWishlist] = useState<string[]>([]);
   const [checkout, setCheckout] = useState<CheckoutFields>(initialCheckout);
@@ -213,6 +215,18 @@ export default function Home() {
     } catch {
       // Invalid device-local data is safely ignored.
     }
+  }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const requestedCategory = params.get("category");
+    if (requestedCategory) {
+      setCategory(requestedCategory);
+      setNewArrivalsOnly(false);
+    }
+    if (params.get("account") === "1") setAccountOpen(true);
+    if (params.get("bag") === "1") setCartOpen(true);
+    if (params.get("wishlist") === "1") setWishlistOpen(true);
   }, []);
 
   useEffect(() => {
@@ -676,40 +690,12 @@ export default function Home() {
         </button>
         <TrevoBrand />
         <nav className="desktop-nav" aria-label="Main navigation">
-          <button onClick={showNewArrivals}>New arrivals</button>
-          <button
-            onClick={() => {
-              chooseCategory("Luxury Collection");
-              scrollToShop();
-            }}
-          >
-            Luxury
-          </button>
-          <button
-            onClick={() => {
-              chooseCategory("Tote Bags");
-              scrollToShop();
-            }}
-          >
-            Totes
-          </button>
-          <button
-            onClick={() => {
-              chooseCategory("Crossbody");
-              scrollToShop();
-            }}
-          >
-            Crossbody
-          </button>
-          <button
-            onClick={() => {
-              chooseCategory("Box Bags");
-              scrollToShop();
-            }}
-          >
-            Box bags
-          </button>
-          <a href="#story">Our story</a>
+          <a href="/new-arrivals">New arrivals</a>
+          <a href="/bags?category=Luxury%20Collection">Luxury</a>
+          <a href="/bags?category=Tote%20Bags">Totes</a>
+          <a href="/bags?category=Crossbody">Crossbody</a>
+          <a href="/bags?category=Box%20Bags">Box bags</a>
+          <a href="/our-story">Our story</a>
         </nav>
         <div className="header-actions">
           <button
@@ -750,7 +736,7 @@ export default function Home() {
         </div>
       </header>
 
-      <section className="hero" id="top">
+      {page === "home" && <section className="hero" id="top">
         <img
           src="/images/trevo-hero.png"
           alt="Trevo collection of sage, taupe and blush handbags in a refined studio setting"
@@ -790,9 +776,9 @@ export default function Home() {
             <b>Made for everyday confidence.</b>
           </span>
         </div>
-      </section>
+      </section>}
 
-      <section className="service-strip" aria-label="Store benefits">
+      {page === "home" && <section className="service-strip" aria-label="Store benefits">
         <div>
           <PackageCheck />
           <span>
@@ -814,9 +800,9 @@ export default function Home() {
             <small>Easy help with eligible returns</small>
           </span>
         </div>
-      </section>
+      </section>}
 
-      <section className="editorial-intro" id="new">
+      {page === "home" && <section className="editorial-intro" id="new">
         <p className="eyebrow">New season, considered style</p>
         <h2>
           The bags you&apos;ll reach for
@@ -827,7 +813,19 @@ export default function Home() {
           From polished work totes to compact crossbodies, each Trevo piece is
           selected for beautiful form and everyday function.
         </p>
-      </section>
+      </section>}
+
+      {page !== "home" && (
+        <section className="catalog-intro" id="top">
+          <p className="eyebrow">Trevo collections</p>
+          <h1>{page === "new-arrivals" ? "New arrivals" : "All bags"}</h1>
+          <p>
+            {page === "new-arrivals"
+              ? "Discover the newest silhouettes, colours and details added to Trevo."
+              : "Explore every Trevo style and filter the collection to find your next everyday bag."}
+          </p>
+        </section>
+      )}
 
       <section className="shop-section" id="shop">
         <div className="shop-heading">
@@ -1029,7 +1027,7 @@ export default function Home() {
         )}
       </section>
 
-      <section className="story" id="story">
+      {page === "home" && <section className="story" id="story">
         <div className="story-visual">
           <img
             src="/images/trevo-hero.png"
@@ -1057,9 +1055,9 @@ export default function Home() {
             <Camera size={17} /> Follow @trevo_pk
           </a>
         </div>
-      </section>
+      </section>}
 
-      <section className="newsletter">
+      {page === "home" && <section className="newsletter">
         <p className="eyebrow">Trevo notes</p>
         <h2>New drops, before everyone else.</h2>
         <p>Join for collection previews, styling ideas and private offers.</p>
@@ -1074,7 +1072,7 @@ export default function Home() {
             Join the list <ArrowRight size={17} />
           </button>
         </form>
-      </section>
+      </section>}
 
       <footer>
         <div className="footer-brand">
@@ -1087,16 +1085,16 @@ export default function Home() {
         </div>
         <div>
           <h3>Shop</h3>
-          <button onClick={showNewArrivals}>New arrivals</button>
-          <button onClick={() => { chooseCategory("Luxury Collection"); scrollToShop(); }}>Luxury collection</button>
-          <button onClick={() => { chooseCategory("Tote Bags"); scrollToShop(); }}>Totes</button>
-          <button onClick={() => { chooseCategory("Crossbody"); scrollToShop(); }}>Crossbody</button>
-          <button onClick={() => { chooseCategory("Box Bags"); scrollToShop(); }}>Box bags</button>
+          <a href="/new-arrivals">New arrivals</a>
+          <a href="/bags?category=Luxury%20Collection">Luxury collection</a>
+          <a href="/bags?category=Tote%20Bags">Totes</a>
+          <a href="/bags?category=Crossbody">Crossbody</a>
+          <a href="/bags?category=Box%20Bags">Box bags</a>
         </div>
         <div>
           <h3>Help</h3>
-          <button onClick={() => setAccountOpen(true)}>My account</button>
-          <button onClick={() => setCartOpen(true)}>Delivery & checkout</button>
+          <a href="/?account=1">My account</a>
+          <a href="/?bag=1">Delivery & checkout</a>
           <a
             href={`https://wa.me/${WhatsAppNumber}`}
             target="_blank"
@@ -1146,11 +1144,11 @@ export default function Home() {
         <div className="footer-bottom">
           <span>© 2026 Trevo. All rights reserved.</span>
           <div className="legal-links" aria-label="Store policies">
-            <button onClick={() => setLegalPanel("privacy")}>Privacy</button>
+            <a href="/privacy">Privacy</a>
             <span aria-hidden="true">·</span>
-            <button onClick={() => setLegalPanel("terms")}>Terms</button>
+            <a href="/terms">Terms</a>
             <span aria-hidden="true">·</span>
-            <button onClick={() => setLegalPanel("returns")}>Returns</button>
+            <a href="/returns">Returns</a>
           </div>
         </div>
       </footer>
@@ -1207,34 +1205,18 @@ export default function Home() {
             </div>
             <nav>
               {[
-                "New arrivals",
-                "Luxury collection",
-                "Tote bags",
-                "Crossbody",
-                "Box bags",
-                "Our story",
-              ].map((item) => (
-                <button
-                  key={item}
-                  onClick={() => {
-                    if (item === "New arrivals") showNewArrivals();
-                    if (item.toLowerCase().includes("luxury"))
-                      chooseCategory("Luxury Collection");
-                    if (item.toLowerCase().includes("tote"))
-                      chooseCategory("Tote Bags");
-                    if (item.toLowerCase().includes("crossbody"))
-                      chooseCategory("Crossbody");
-                    if (item.toLowerCase().includes("box"))
-                      chooseCategory("Box Bags");
-                    setMenuOpen(false);
-                    item === "Our story"
-                      ? document.getElementById("story")?.scrollIntoView()
-                      : item !== "New arrivals" && scrollToShop();
-                  }}
-                >
-                  {item}
-                  <ArrowRight size={18} />
-                </button>
+                ["New arrivals", "/new-arrivals"],
+                ["All bags", "/bags"],
+                ["Luxury collection", "/bags?category=Luxury%20Collection"],
+                ["Tote bags", "/bags?category=Tote%20Bags"],
+                ["Crossbody", "/bags?category=Crossbody"],
+                ["Box bags", "/bags?category=Box%20Bags"],
+                ["Our story", "/our-story"],
+                ["Contact us", "/contact"],
+              ].map(([item, href]) => (
+                <a key={item} href={href}>
+                  {item}<ArrowRight size={18} />
+                </a>
               ))}
             </nav>
             <div className="mobile-menu-actions">
@@ -2027,4 +2009,8 @@ export default function Home() {
       )}
     </main>
   );
+}
+
+export default function Home() {
+  return <Storefront page="home" />;
 }
