@@ -32,6 +32,7 @@ import {
   UserRound,
   X,
 } from "lucide-react";
+import { OptimizedProductImage } from "@/components/OptimizedProductImage";
 import {
   formatPKR,
   normalizeProduct,
@@ -942,7 +943,7 @@ export function Storefront({ page = "home" }: { page?: StorefrontPage }) {
                 onClick={() => openProduct(product)}
                 aria-label={`View ${product.name}`}
               >
-                <img
+                <OptimizedProductImage
                   src={product.images[0]}
                   alt={product.name}
                   loading="lazy"
@@ -1029,7 +1030,7 @@ export function Storefront({ page = "home" }: { page?: StorefrontPage }) {
 
       {page === "home" && <section className="story" id="story">
         <div className="story-visual">
-          <img
+          <OptimizedProductImage
             src="/images/trevo-hero.png"
             alt="Trevo handbags arranged in a calm boutique-inspired setting"
           />
@@ -1268,7 +1269,7 @@ export function Storefront({ page = "home" }: { page?: StorefrontPage }) {
                       className="cart-line"
                       key={`${line.product.id}-${line.color}`}
                     >
-                      <img src={productVariants(line.product).find((variant) => variant.color === line.color)?.images[0] || line.product.images[0]} alt="" />
+                      <OptimizedProductImage src={productVariants(line.product).find((variant) => variant.color === line.color)?.images[0] || line.product.images[0]} alt="" />
                       <div>
                         <p>{line.product.collection}</p>
                         <h3>{line.product.name}</h3>
@@ -1389,7 +1390,7 @@ export function Storefront({ page = "home" }: { page?: StorefrontPage }) {
                   (product) =>
                     product && (
                       <div className="wishlist-line" key={product.id}>
-                        <img src={product.images[0]} alt="" />
+                        <OptimizedProductImage src={product.images[0]} alt="" />
                         <div>
                           <p>{product.collection}</p>
                           <h3>{product.name}</h3>
@@ -1623,7 +1624,7 @@ export function Storefront({ page = "home" }: { page?: StorefrontPage }) {
               <X />
             </button>
             <div className="gallery">
-              <img
+              <OptimizedProductImage
                 src={currentSlide?.image || selectedProduct.images[0]}
                 alt={`${selectedProduct.name} view ${activeImage + 1}`}
               />
@@ -1651,7 +1652,7 @@ export function Storefront({ page = "home" }: { page?: StorefrontPage }) {
                         aria-label={`View image ${index + 1}`}
                         onClick={() => { setActiveImage(index); setSelectedColor(slide.color); }}
                       >
-                        <img src={slide.image} alt="" />
+                        <OptimizedProductImage src={slide.image} alt="" />
                       </button>
                     ))}
                   </div>
@@ -1948,7 +1949,7 @@ export function Storefront({ page = "home" }: { page?: StorefrontPage }) {
                         key={`${line.product.id}-${line.color}`}
                       >
                         <div>
-                          <img src={productVariants(line.product).find((variant) => variant.color === line.color)?.images[0] || line.product.images[0]} alt="" />
+                          <OptimizedProductImage src={productVariants(line.product).find((variant) => variant.color === line.color)?.images[0] || line.product.images[0]} alt="" />
                           <b>{line.quantity}</b>
                         </div>
                         <span>
