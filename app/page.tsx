@@ -738,10 +738,18 @@ export function Storefront({ page = "home" }: { page?: StorefrontPage }) {
       </header>
 
       {page === "home" && <section className="hero" id="top">
-        <img
-          src="/images/trevo-hero.png"
-          alt="Trevo collection of sage, taupe and blush handbags in a refined studio setting"
-        />
+        <picture className="hero-media">
+          <source srcSet="/images/trevo-hero.webp" type="image/webp" />
+          <img
+            src="/images/trevo-hero.png"
+            alt="Trevo collection of sage, taupe and blush handbags in a refined studio setting"
+            width="1586"
+            height="992"
+            loading="eager"
+            fetchPriority="high"
+            decoding="async"
+          />
+        </picture>
         <div className="hero-content">
           <p className="eyebrow">The signature edit · 2026</p>
           <h1>

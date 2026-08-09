@@ -41,6 +41,15 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en-PK">
+      <head>
+        <link
+          rel="preload"
+          href="/images/trevo-hero.webp"
+          as="image"
+          type="image/webp"
+          fetchPriority="high"
+        />
+      </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
