@@ -81,9 +81,23 @@ export function calculateShipping(
   return { fee: settings.flatFee, isFree: false, reason: null };
 }
 
-export function shippingAnnouncement(settings: ShippingSettings) {
+export function shippingAnnouncement(
+  settings: ShippingSettings,
+  dateKey = pakistanDateKey(),
+) {
   const normalized = normalizeShippingSettings(settings);
   if (!normalized.freeShippingEnabled) return `Flat nationwide delivery — Rs. ${normalized.flatFee.toLocaleString("en-PK")}`;
+
+  const endDate = normalized.endDate || normalized.startDate;
+  const dateOfferIsActive = Boolean(
+    normalized.dateEnabled &&
+    normalized.startDate &&
+    dateKey >= normalized.startDate &&
+    dateKey <= endDate,
+  );
+
+  if (dateOfferIsActive) return "Free shipping all across Pakistan";
+
   const offers: string[] = [];
   if (normalized.minimumEnabled) offers.push(`free above Rs. ${normalized.minimumOrderAmount.toLocaleString("en-PK")}`);
   if (normalized.dateEnabled && normalized.startDate) {
