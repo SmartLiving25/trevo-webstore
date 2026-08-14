@@ -42,7 +42,7 @@ The server recalculates subtotal, shipping and total. It never trusts browser to
 
 ## Store rules already implemented
 
-- Flat nationwide delivery: Rs. 100 on every order.
+- Admin-managed nationwide delivery (default Rs. 200) with optional order-value and offer-date free-shipping rules.
 - JazzCash and EasyPaisa: 0300 7041451 with no extra fee.
 - Bank transfer: customers request the current instructions through Trevo WhatsApp.
 - COD: no advance payment required.

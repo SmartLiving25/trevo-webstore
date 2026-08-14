@@ -2,6 +2,8 @@ import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { getAdminFirestore } from "@/lib/firebase/admin";
 import { getAdminSessionUser } from "@/lib/firebase/admin-session";
+import { calculateShipping } from "@/lib/shipping";
+import { getShippingSettings } from "@/lib/shipping-settings-server";
 
 export const runtime = "nodejs";
 
@@ -85,13 +87,13 @@ export async function POST(request: Request) {
       (sum, item) => sum + item.unitPrice * item.quantity,
       0,
     );
-    const allowedShipping = 100;
+    const shippingQuote = calculateShipping(
+      calculatedSubtotal,
+      await getShippingSettings(),
+    );
+    const verifiedTotal = calculatedSubtotal + shippingQuote.fee;
 
-    if (
-      calculatedSubtotal !== order.subtotal ||
-      allowedShipping !== order.shipping ||
-      calculatedSubtotal + allowedShipping !== order.total
-    ) {
+    if (calculatedSubtotal !== order.subtotal) {
       return Response.json(
         { error: "Order totals could not be verified." },
         { status: 400 },
@@ -238,13 +240,14 @@ export async function POST(request: Request) {
         notes: order.customer.notes,
         items: order.items,
         subtotal: order.subtotal,
-        shipping: order.shipping,
-        total: order.total,
+        shipping: shippingQuote.fee,
+        shippingDiscountReason: shippingQuote.reason,
+        total: verifiedTotal,
         deliveryMethod: order.customer.delivery,
         paymentMethod: order.customer.payment,
         paymentStatus:
           order.customer.payment === "cod" ? "cod" : "pending_advance",
-        advanceAmount: order.customer.payment === "cod" ? 0 : order.total,
+        advanceAmount: order.customer.payment === "cod" ? 0 : verifiedTotal,
         status: "new",
         trackingCode: "",
         inventoryDeducted: true,
@@ -267,7 +270,7 @@ export async function POST(request: Request) {
           phone: order.customer.phone,
           city: order.customer.city,
           totalOrders: Number(previous?.totalOrders || 0) + 1,
-          totalSpent: Number(previous?.totalSpent || 0) + order.total,
+          totalSpent: Number(previous?.totalSpent || 0) + verifiedTotal,
           createdAt: previous?.createdAt || now,
           updatedAt: now,
         },
@@ -283,6 +286,9 @@ export async function POST(request: Request) {
           status: "new",
           paymentStatus:
             order.customer.payment === "cod" ? "cod" : "pending_advance",
+          subtotal: calculatedSubtotal,
+          shipping: shippingQuote.fee,
+          total: verifiedTotal,
         },
       },
       { status: 201 },

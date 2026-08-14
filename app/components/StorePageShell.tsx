@@ -1,5 +1,6 @@
 import { Camera, MessageCircle, Music2 } from "lucide-react";
 import type { ReactNode } from "react";
+import { ShippingAnnouncement } from "@/app/components/ShippingAnnouncement";
 
 const whatsapp = "923007041451";
 
@@ -16,11 +17,7 @@ export function StorePageShell({
 }) {
   return (
     <main className="information-page">
-      <div className="announcement">
-        <span>Flat nationwide delivery — Rs. 100</span>
-        <span className="announcement-separator">•</span>
-        <span>Advance payment has no extra fee</span>
-      </div>
+      <ShippingAnnouncement />
       <header className="information-header">
         <a className="information-brand" href="/">Trevo</a>
         <nav aria-label="Main navigation">

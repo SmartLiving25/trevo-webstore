@@ -43,6 +43,8 @@ import {
 } from "../lib/catalog";
 import { trackMetaEvent } from "../lib/meta-pixel";
 import { firebaseAuth } from "../lib/firebase/client";
+import { calculateShipping, shippingAnnouncement } from "../lib/shipping";
+import { useShippingSettings } from "../lib/use-shipping-settings";
 
 type CartLine = { product: Product; quantity: number; color: string };
 type LegalPanel = "privacy" | "terms" | "returns";
@@ -183,6 +185,7 @@ async function syncCustomerAccount(
 export type StorefrontPage = "home" | "bags" | "new-arrivals";
 
 export function Storefront({ page = "home" }: { page?: StorefrontPage }) {
+  const { settings: shippingSettings, refreshShippingSettings } = useShippingSettings();
   const [menuOpen, setMenuOpen] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
   const [wishlistOpen, setWishlistOpen] = useState(false);
@@ -362,7 +365,8 @@ export function Storefront({ page = "home" }: { page?: StorefrontPage }) {
     (sum, line) => sum + line.product.price * line.quantity,
     0,
   );
-  const shipping = 100;
+  const shippingQuote = calculateShipping(subtotal, shippingSettings);
+  const shipping = shippingQuote.fee;
   const total = subtotal + shipping;
   const count = cart.reduce((sum, line) => sum + line.quantity, 0);
 
@@ -586,7 +590,7 @@ export function Storefront({ page = "home" }: { page?: StorefrontPage }) {
       ...lines,
       "",
       `Subtotal: ${formatPKR(subtotal)}`,
-      `Delivery: Flat nationwide shipping — ${formatPKR(shipping)}`,
+      `Delivery: ${shippingQuote.isFree ? "Free nationwide shipping" : `Flat nationwide shipping — ${formatPKR(shipping)}`}`,
       `Total: ${formatPKR(total)}`,
       `Payment: ${checkout.payment === "advance" ? "Advance payment" : "Cash on delivery (no advance required)"}`,
       "",
@@ -602,6 +606,11 @@ export function Storefront({ page = "home" }: { page?: StorefrontPage }) {
     if (!cart.length) return;
     setSubmitting(true);
     setCheckoutError("");
+    const latestShippingSettings = await refreshShippingSettings();
+    const checkoutShipping = calculateShipping(
+      subtotal,
+      latestShippingSettings || shippingSettings,
+    ).fee;
     const payload = {
       customer: checkout,
       items: cart.map((line) => ({
@@ -613,8 +622,8 @@ export function Storefront({ page = "home" }: { page?: StorefrontPage }) {
         unitPrice: line.product.price,
       })),
       subtotal,
-      shipping,
-      total,
+      shipping: checkoutShipping,
+      total: subtotal + checkoutShipping,
       paymentStatus:
         checkout.payment === "advance"
           ? "pending_advance"
@@ -636,7 +645,7 @@ export function Storefront({ page = "home" }: { page?: StorefrontPage }) {
           id: line.product.id,
           quantity: line.quantity,
         })),
-        value: total,
+        value: Number(data.order.total ?? payload.total),
         currency: "PKR",
         num_items: count,
         order_id: String(data.order.orderNumber),
@@ -681,7 +690,7 @@ export function Storefront({ page = "home" }: { page?: StorefrontPage }) {
   return (
     <main>
       <div className="announcement">
-        <span>Flat nationwide delivery — Rs. 100</span>
+        <span>{shippingAnnouncement(shippingSettings)}</span>
         <span className="announcement-separator">•</span>
         <span>Advance payment has no extra fee</span>
       </div>
@@ -1326,8 +1335,8 @@ export function Storefront({ page = "home" }: { page?: StorefrontPage }) {
                   <div className="delivery-callout">
                     <PackageCheck size={18} />
                     <span>
-                      <b>Flat nationwide delivery</b>
-                      <small>Only Rs. 100 on every order.</small>
+                      <b>{shippingQuote.isFree ? "Free nationwide delivery" : "Flat nationwide delivery"}</b>
+                      <small>{shippingQuote.isFree ? "Your order qualifies for free delivery." : `Only ${formatPKR(shipping)} on this order.`}</small>
                     </span>
                   </div>
                   <div className="total-row">
@@ -1915,10 +1924,10 @@ export function Storefront({ page = "home" }: { page?: StorefrontPage }) {
                           }
                         />
                         <span>
-                          <b>Flat nationwide delivery</b>
+                          <b>{shippingQuote.isFree ? "Free nationwide delivery" : "Flat nationwide delivery"}</b>
                           <small>Tracked delivery across Pakistan</small>
                         </span>
-                        <strong>Rs. 100</strong>
+                        <strong>{shippingQuote.isFree ? "Free" : formatPKR(shipping)}</strong>
                       </label>
                     </fieldset>
                     <fieldset>
@@ -1988,7 +1997,7 @@ export function Storefront({ page = "home" }: { page?: StorefrontPage }) {
                       </p>
                       <p>
                         <span>Delivery</span>
-                        <b>{formatPKR(shipping)}</b>
+                        <b>{shippingQuote.isFree ? "Free" : formatPKR(shipping)}</b>
                       </p>
                       <p>
                         <span>Total</span>

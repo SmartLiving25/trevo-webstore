@@ -7,6 +7,33 @@ import { z } from "zod";
 initializeApp();
 const db = getFirestore();
 
+type FunctionShippingSettings = { flatFee: number; freeShippingEnabled: boolean; minimumEnabled: boolean; minimumOrderAmount: number; dateEnabled: boolean; startDate: string; endDate: string };
+const functionShippingDefaults: FunctionShippingSettings = { flatFee: 200, freeShippingEnabled: false, minimumEnabled: true, minimumOrderAmount: 2000, dateEnabled: false, startDate: "", endDate: "" };
+const todayInPakistan = () => {
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Karachi", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date());
+  const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${value.year}-${value.month}-${value.day}`;
+};
+async function liveShippingFee(subtotal: number) {
+  const snapshot = await db.collection("storeSettings").doc("shipping").get();
+  const saved = snapshot.data() || {};
+  const settings: FunctionShippingSettings = {
+    flatFee: Number.isFinite(Number(saved.flatFee)) ? Math.max(0, Math.round(Number(saved.flatFee))) : functionShippingDefaults.flatFee,
+    freeShippingEnabled: saved.freeShippingEnabled === true,
+    minimumEnabled: saved.minimumEnabled !== false,
+    minimumOrderAmount: Number.isFinite(Number(saved.minimumOrderAmount)) ? Math.max(1, Math.round(Number(saved.minimumOrderAmount))) : functionShippingDefaults.minimumOrderAmount,
+    dateEnabled: saved.dateEnabled === true,
+    startDate: typeof saved.startDate === "string" ? saved.startDate : "",
+    endDate: typeof saved.endDate === "string" ? saved.endDate : "",
+  };
+  if (!settings.freeShippingEnabled) return settings.flatFee;
+  if (settings.minimumEnabled && subtotal > settings.minimumOrderAmount) return 0;
+  const today = todayInPakistan();
+  const endDate = settings.endDate || settings.startDate;
+  if (settings.dateEnabled && settings.startDate && today >= settings.startDate && today <= endDate) return 0;
+  return settings.flatFee;
+}
+
 const itemSchema = z.object({ productId: z.string(), sku: z.string(), name: z.string(), color: z.string(), quantity: z.number().int().min(1).max(20), unitPrice: z.number().int().min(0) });
 const orderSchema = z.object({
   customer: z.object({ name: z.string().min(2), email: z.string().email(), phone: z.string().min(10), city: z.string().min(2), address: z.string().min(8), notes: z.string().max(500).optional(), delivery: z.enum(["standard", "urgent"]), payment: z.enum(["cod", "advance"]) }),
@@ -18,7 +45,7 @@ export const createOrder = onCall({ enforceAppCheck: true, region: "asia-south1"
   if (!parsed.success) throw new HttpsError("invalid-argument", "Please check the order details.");
   const order = parsed.data;
   const subtotal = order.items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
-  const shipping = 100;
+  const shipping = await liveShippingFee(subtotal);
   const total = subtotal + shipping;
   const orderNumber = `TRV-${new Date().toISOString().slice(2, 10).replaceAll("-", "")}-${Math.floor(1000 + Math.random() * 9000)}`;
   const ref = db.collection("orders").doc();

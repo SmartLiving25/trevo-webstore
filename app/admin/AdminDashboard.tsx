@@ -4,15 +4,16 @@ import { useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft, BadgeDollarSign, CheckCircle2, CircleDollarSign, Edit3,
   Download, ExternalLink, LayoutDashboard, LogOut, Menu, MessageCircle, Package,
-  Plus, Search, ShoppingBag, Trash2, Users, X,
+  Plus, Search, ShoppingBag, Trash2, Truck, Users, X,
 } from "lucide-react";
 import { OptimizedProductImage } from "@/components/OptimizedProductImage";
 import {
   formatPKR, normalizeProduct, productVariants, products as catalogProducts,
   type Product, type ProductVariant,
 } from "../../lib/catalog";
+import { DEFAULT_SHIPPING_SETTINGS, normalizeShippingSettings, type ShippingSettings } from "../../lib/shipping";
 
-type Tab = "Overview" | "Products" | "Orders" | "Customers" | "Payments";
+type Tab = "Overview" | "Products" | "Orders" | "Customers" | "Payments" | "Shipping";
 type AdminOrder = {
   dbId: string;
   orderNumber: string;
@@ -106,6 +107,8 @@ export default function AdminDashboard() {
   const [editorOpen, setEditorOpen] = useState(false);
   const [draft, setDraft] = useState<ProductDraft>(emptyDraft());
   const [saving, setSaving] = useState(false);
+  const [savingShipping, setSavingShipping] = useState(false);
+  const [shippingDraft, setShippingDraft] = useState<ShippingSettings>(DEFAULT_SHIPPING_SETTINGS);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState("");
 
@@ -113,17 +116,20 @@ export default function AdminDashboard() {
 
   const loadData = async () => {
     try {
-      const [ordersResponse, productsResponse, customersResponse] = await Promise.all([
+      const [ordersResponse, productsResponse, customersResponse, shippingResponse] = await Promise.all([
         fetch("/api/orders"),
         fetch("/api/products"),
         fetch("/api/customers"),
+        fetch("/api/settings/shipping", { cache: "no-store" }),
       ]);
       if (ordersResponse.status === 401 || customersResponse.status === 401) { window.location.href = "/admin/login"; return; }
       const orderData = await ordersResponse.json();
       const productData = await productsResponse.json();
       const customerData = await customersResponse.json();
+      const shippingData = await shippingResponse.json();
       if (ordersResponse.ok) setOrders((orderData.orders || []).map(mapOrder));
       if (customersResponse.ok) setCustomers(customerData.customers || []);
+      if (shippingResponse.ok) setShippingDraft(normalizeShippingSettings(shippingData.settings));
       if (productsResponse.ok) {
         const live = (productData.products || []).map((product: Product) => normalizeProduct(product));
         const hidden = new Set<string>(productData.inactiveIds || []);
@@ -207,6 +213,27 @@ export default function AdminDashboard() {
     else showToast("Product could not be deleted.");
   };
 
+  const saveShipping = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setSavingShipping(true);
+    try {
+      const response = await fetch("/api/settings/shipping", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(shippingDraft),
+      });
+      const data = await response.json();
+      if (response.status === 401) { window.location.href = "/admin/login"; return; }
+      if (!response.ok) throw new Error(data.error || "Shipping settings could not be saved.");
+      setShippingDraft(normalizeShippingSettings(data.settings));
+      showToast("Shipping settings are live across the store.");
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Shipping settings could not be saved.");
+    } finally {
+      setSavingShipping(false);
+    }
+  };
+
   const downloadProductsCsv = () => {
     const headings = [
       "Product ID", "SKU", "Product name", "Category", "Collection",
@@ -246,6 +273,7 @@ export default function AdminDashboard() {
     { tab: "Overview", icon: <LayoutDashboard /> }, { tab: "Products", icon: <Package /> },
     { tab: "Orders", icon: <ShoppingBag /> }, { tab: "Customers", icon: <Users /> },
     { tab: "Payments", icon: <CircleDollarSign /> },
+    { tab: "Shipping", icon: <Truck /> },
   ];
 
   return <main className="admin-shell">
@@ -274,6 +302,13 @@ export default function AdminDashboard() {
         {tab === "Orders" && <div className="admin-content"><section className="page-title"><div><h1>Orders</h1><p>{orders.length} real customer orders from Firestore.</p></div></section><section className="admin-card recent-orders"><OrdersTable orders={matchingOrders} onStatus={changeStatus} onPaid={markPaid} /></section></div>}
         {tab === "Customers" && <div className="admin-content"><section className="page-title"><div><h1>Customers</h1><p>Live sign-ups and checkout customers from Firestore.</p></div></section>{matchingCustomers.length ? <section className="customer-grid">{matchingCustomers.map((customer) => <article className="admin-card customer-card" key={customer.id}><div className="customer-avatar">{customer.name.split(" ").map((name) => name[0]).join("").slice(0, 2).toUpperCase()}</div><h2>{customer.name}</h2><p>{customer.email || customer.city || "Trevo customer"}</p>{customer.registeredAccount && <span className="customer-account-badge">Signed-in account{customer.emailVerified ? " · Verified" : ""}</span>}<div><span><b>{customer.totalOrders}</b>Orders</span><span><b>{formatPKR(customer.totalSpent)}</b>Spent</span></div>{customer.phone ? <a href={`https://wa.me/${customer.phone.replace(/\D/g, "").replace(/^0/, "92")}`} target="_blank" rel="noreferrer"><MessageCircle /> WhatsApp customer</a> : <a href={`mailto:${customer.email}`}><MessageCircle /> Email customer</a>}<small className="customer-last-seen">{customer.lastLoginAt ? `Last sign-in ${new Date(customer.lastLoginAt).toLocaleString("en-PK", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}` : customer.city ? `${customer.city}, Pakistan` : "No sign-in recorded"}</small></article>)}</section> : <section className="admin-card empty-state"><Users /><h3>No customers yet</h3><p>New sign-ups and checkout customers will appear here automatically.</p></section>}</div>}
         {tab === "Payments" && <div className="admin-content"><section className="page-title"><div><h1>Payments</h1><p>Payment status from live orders.</p></div></section><section className="metric-grid compact"><article><p>Paid revenue</p><h2>{formatPKR(paidRevenue)}</h2></article><article><p>Pending advance</p><h2>{formatPKR(pendingAdvance)}</h2></article><article><p>Paid orders</p><h2>{orders.filter((order) => order.payment === "Paid").length}</h2></article><article><p>COD orders</p><h2>{orders.filter((order) => order.paymentStatus === "cod").length}</h2></article></section><section className="admin-card recent-orders"><OrdersTable orders={matchingOrders} onStatus={changeStatus} onPaid={markPaid} paymentOnly /></section></div>}
+        {tab === "Shipping" && <div className="admin-content"><section className="page-title"><div><h1>Shipping</h1><p>One live policy controls delivery messages, checkout totals and verified orders.</p></div></section><form className="admin-card shipping-settings-card admin-form" onSubmit={saveShipping}>
+          <section><h2>Flat shipping fee</h2><p>Charged nationwide unless an enabled free-shipping condition is met.</p><label>Fee (PKR)<input required type="number" min="0" step="1" value={shippingDraft.flatFee} onChange={(event) => setShippingDraft((current) => ({ ...current, flatFee: Number(event.target.value) }))} /></label></section>
+          <section><div className="shipping-setting-toggle"><span><h2>Conditional free shipping</h2><p>Optional. If both rules are enabled, either one can make delivery free.</p></span><label className="admin-switch"><input type="checkbox" checked={shippingDraft.freeShippingEnabled} onChange={(event) => setShippingDraft((current) => ({ ...current, freeShippingEnabled: event.target.checked }))} /><span /></label></div></section>
+          <fieldset disabled={!shippingDraft.freeShippingEnabled}><legend>Free-shipping conditions</legend><div className="shipping-rule"><label className="shipping-check"><input type="checkbox" checked={shippingDraft.minimumEnabled} onChange={(event) => setShippingDraft((current) => ({ ...current, minimumEnabled: event.target.checked }))} />Order-value rule</label><label>Free when product subtotal is more than (PKR)<input type="number" min="1" step="1" value={shippingDraft.minimumOrderAmount} onChange={(event) => setShippingDraft((current) => ({ ...current, minimumOrderAmount: Number(event.target.value) }))} /></label><small>With 2,000 entered, a subtotal of 2,001 or more qualifies.</small></div><div className="shipping-rule"><label className="shipping-check"><input type="checkbox" checked={shippingDraft.dateEnabled} onChange={(event) => setShippingDraft((current) => ({ ...current, dateEnabled: event.target.checked }))} />Date or date-range rule</label><div><label>Start date<input type="date" value={shippingDraft.startDate} onChange={(event) => setShippingDraft((current) => ({ ...current, startDate: event.target.value }))} /></label><label>End date (optional)<input type="date" min={shippingDraft.startDate} value={shippingDraft.endDate} onChange={(event) => setShippingDraft((current) => ({ ...current, endDate: event.target.value }))} /></label></div><small>For one free-shipping day, choose only the start date. Dates use Pakistan time.</small></div></fieldset>
+          <div className="shipping-preview"><Truck /><span><b>Current policy preview</b><small>Rs. {shippingDraft.flatFee.toLocaleString("en-PK")} flat delivery{shippingDraft.freeShippingEnabled ? " with the selected free-shipping rule(s)" : " on every order"}.</small></span></div>
+          <button className="solid-admin-button full" disabled={savingShipping}>{savingShipping ? "Saving…" : "Save and publish shipping settings"}</button>
+        </form></div>}
       </>}
     </section>
     {editorOpen && <ProductEditor draft={draft} setDraft={setDraft} updateVariant={updateVariant} updateImage={updateImage} onSubmit={saveProduct} onClose={() => setEditorOpen(false)} saving={saving} />}
