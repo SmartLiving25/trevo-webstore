@@ -771,6 +771,22 @@ export function Storefront({ page = "home" }: { page?: StorefrontPage }) {
         </picture>
         <div className="hero-content">
           <p className="eyebrow">The signature edit · 2026</p>
+          <div className="hero-sale-banner" style={{ margin: "0.75rem 0 1rem 0" }}>
+    <span style={{ 
+      display: "inline-block", 
+      fontSize: "0.85rem", 
+      textTransform: "uppercase", 
+      letterSpacing: "0.15em", 
+      color: "#d4af37", 
+      fontWeight: 600,
+      marginBottom: "0.25rem" 
+    }}>
+      The Luxe Clearance Sale is Live
+    </span>
+    <h2 style={{ fontSize: "1.65rem", lineHeight: "1.2", fontWeight: 700, color: "#ffffff" }}>
+      Up to 70% Off <span style={{ color: "#d4af37", fontWeight: 400 }}>+ Free Shipping</span>
+    </h2>
+  </div>
           <h1>
             Designed to be
             <br />
