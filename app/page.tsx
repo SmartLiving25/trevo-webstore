@@ -783,7 +783,7 @@ export function Storefront({ page = "home" }: { page?: StorefrontPage }) {
     }}>
       The Luxe Clearance Sale is Live
     </span>
-    <h2 style={{ fontSize: "1.65rem", lineHeight: "1.2", fontWeight: 700, color: "#ffffff" }}>
+    <h2 style={{ fontSize: "1.65rem", lineHeight: "1.2", fontWeight: 700, color: "#D4AF37" }}>
       Up to 70% Off <span style={{ color: "#000011", fontWeight: 400 }}>+ Free Shipping</span>
     </h2>
   </div>
