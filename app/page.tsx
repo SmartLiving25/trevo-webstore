@@ -755,12 +755,12 @@ export function Storefront({ page = "home" }: { page?: StorefrontPage }) {
       {page === "home" && <section className="hero" id="top">
         <picture className="hero-media">
           <source
-            srcSet="/images/trevo-hero-Sale-720.webp 720w, /images/trevo-hero-Sale-1200.webp 1200w, /images/trevo-hero-Sale.webp 1586w"
+            srcSet="/images/trevo-hero-720.webp 720w, /images/trevo-hero-1200.webp 1200w, /images/trevo-hero.webp 1586w"
             sizes="100vw"
             type="image/webp"
           />
           <img
-            src="/images/trevo-hero-Sale.webp"
+            src="/images/trevo-hero.webp"
             alt="Trevo collection of sage, taupe and blush handbags in a refined studio setting"
             width="1586"
             height="992"
