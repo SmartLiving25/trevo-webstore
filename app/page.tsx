@@ -755,12 +755,12 @@ export function Storefront({ page = "home" }: { page?: StorefrontPage }) {
       {page === "home" && <section className="hero" id="top">
         <picture className="hero-media">
           <source
-            srcSet="/images/trevo-hero-720.webp 720w, /images/trevo-hero-1200.webp 1200w, /images/trevo-hero.webp 1586w"
+            srcSet="/images/trevo-hero-Sale-1200.webp 720w, /images/trevo-hero-Sale-1200.webp 1200w, /images/trevo-hero-Sale-1200.webp 1586w"
             sizes="100vw"
             type="image/webp"
           />
           <img
-            src="/images/trevo-hero.webp"
+            src="/images/trevo-hero-Sale-1200.webp"
             alt="Trevo collection of sage, taupe and blush handbags in a refined studio setting"
             width="1586"
             height="992"
@@ -1058,7 +1058,7 @@ export function Storefront({ page = "home" }: { page?: StorefrontPage }) {
       {page === "home" && <section className="story" id="story">
         <div className="story-visual">
           <OptimizedProductImage
-            src="/images/trevo-hero-1200.webp"
+            src="/images/trevo-hero-Sale-1200.webp"
             alt="Trevo handbags arranged in a calm boutique-inspired setting"
             width="1200"
             height="751"
