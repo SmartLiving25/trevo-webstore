@@ -1074,7 +1074,7 @@ export function Storefront({ page = "home" }: { page?: StorefrontPage }) {
       {page === "home" && <section className="story" id="story">
         <div className="story-visual">
           <OptimizedProductImage
-            src="/images/trevo-hero-Sale-1200.webp"
+            src="/images/trevo-hero-1200.webp"
             alt="Trevo handbags arranged in a calm boutique-inspired setting"
             width="1200"
             height="751"
