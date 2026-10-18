@@ -784,7 +784,7 @@ export function Storefront({ page = "home" }: { page?: StorefrontPage }) {
      
     </span>
     <h2 style={{ fontSize: "1.65rem", lineHeight: "1.2", fontWeight: 700, color: "#D4AF37" }}>
-       <span style={{ color: "#000011", fontWeight: 400 }}>+ Free Shipping</span>
+       <span style={{ color: "#000011", fontWeight: 400 }}></span>
     </h2>
   </div>
           <h1>
